@@ -10,8 +10,15 @@ local model through Ollama. Your data never leaves your computer unless you conn
   header totals to the tiyn; re-importing or overlapping statements never duplicates operations.
 - **Batched questions** — the local model guesses the category of each new merchant, questions
   pile up in batches, and a whole batch is answered at once; answered merchants are categorized automatically.
-- **Analytics** — spending by month, weekday (calendar average), category, top merchants, most
-  expensive days, check sizes; a "without savings" switch; reconciliation with every statement.
+- **Home dashboard** — this month so far against the same days of the last one, the month's pace,
+  day-by-day chart, top categories, recent operations and insights.
+- **Analytics** — spending by day or week, month, weekday (calendar average), category and
+  merchant, a calendar heatmap, most expensive days, check sizes; changes against the previous
+  period; a "without savings" switch; reconciliation with every statement. Every bar, day and
+  merchant opens its operations, and their sum equals the number on the chart.
+- **Operations** — every operation grouped by day, with filters by period, kind, category,
+  merchant and text, CSV export, and a category change for one purchase or all purchases of a merchant.
+- **Categories** — spending per category, add, rename, merge, archive, mark as savings.
 - **Background insights** — subscriptions and recurring payments, price increases, anomalies,
   double charges, growing categories, saving tips.
 - **Transfers** — search by recipient name, sent and received per person; transfers to a
@@ -99,7 +106,7 @@ Shortcuts → Automation → Transaction, all cards, Run Immediately. Action "Ge
 | `internal/kaspi`, `statement`, `importer` | Kaspi labels, PDF parsing, duplicate-free import |
 | `internal/analytics` | analytics page and reconciliation — pure functions over operation rows |
 | `internal/analysis` | merchant questions, batches, insights, ClickHouse sync |
-| `internal/web` | home, batches, analytics, transfers, settings, import pages |
+| `internal/web` | home, operations, analytics, categories, batches, transfers, settings, import pages |
 | `internal/ingest` | `POST /api/v1/tx`, `GET /healthz`, token, rate limit, dedupe |
 | `internal/bot`, `classify`, `llm` | Telegram, classification (memory → model → question), Ollama / Claude / OpenAI |
 | `internal/money`, `merchant`, `report`, `scheduler` | amounts, merchant names, summaries, `VACUUM INTO` backups |

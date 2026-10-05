@@ -1,0 +1,72 @@
+{{template "head" .Page}}
+<div class="page-head">
+  <div>
+    <h1>Categories</h1>
+    <div class="sub">{{len .Active}} active{{if .Archived}} · {{len .Archived}} archived{{end}}{{if not .YearFrom.IsZero}} · spending since {{date .YearFrom}}{{end}}</div>
+  </div>
+  <form class="actions" method="post" action="/ui/categories">
+    <input type="hidden" name="action" value="add">
+    <input type="text" name="name" placeholder="New category, e.g. Rent" maxlength="40" required aria-label="New category name">
+    <button class="btn sm">{{template "icon" "plus"}}Add</button>
+  </form>
+</div>
+{{template "flash" .Flash}}
+
+{{$opts := .Options}}
+<div class="ops">
+  {{range .Active}}{{$c := .}}
+  <div class="op cat-row">
+    <span class="ava" style="--h: {{hue .Name}}" aria-hidden="true">{{initial .Name}}</span>
+    <div class="op-main">
+      <a class="op-title" href="{{link "/ui/operations" "cat" .Name "period" "12m"}}">{{.Name}}</a>
+      <div class="op-meta">
+        {{if .Savings}}<span class="tag save">savings</span>{{end}}
+        <span>{{.Year.Count}} {{plural (int .Year.Count) "operation" "operations"}} in 12 months</span>
+        {{if .Rules}}<span>· {{.Rules}} {{plural .Rules "merchant" "merchants"}} remembered</span>{{end}}
+        {{if ne .All.Total .Year.Total}}<span class="hide-narrow">· all time {{compact .All.Total}}</span>{{end}}
+      </div>
+    </div>
+    <div class="hide-narrow"><div class="bar" style="grid-template-columns: 1fr; margin: 0; padding: 0"><span class="track"><span class="fill{{if le .Year.Total 0}} zero{{end}}" style="display: block; width: {{width .Pct}}"></span></span></div></div>
+    <div style="display: flex; align-items: center; gap: 4px">
+      <div class="op-amt">{{if .Year.Total}}{{kzt .Year.Total}}{{else}}<span class="muted">—</span>{{end}}</div>
+      <details class="edit">
+        <summary class="btn ghost sm" aria-label="Edit {{.Name}}" title="Edit">{{template "icon" "edit"}}</summary>
+        <div class="edit-pop">
+          <form method="post" action="/ui/categories" style="display: grid; gap: 8px">
+            <input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{.ID}}">
+            <div class="field"><label for="rn{{.ID}}">Rename</label><input id="rn{{.ID}}" type="text" name="name" value="{{.Name}}" maxlength="40"></div>
+            <div><button class="btn sm">Rename</button> <span class="muted tiny">an existing name merges the two</span></div>
+          </form>
+          <form method="post" action="/ui/categories" style="display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px">
+            <input type="hidden" name="action" value="merge"><input type="hidden" name="id" value="{{.ID}}">
+            <div class="field"><label for="mg{{.ID}}">Merge into</label>
+              <select id="mg{{.ID}}" name="into" required><option value="" disabled selected>Choose…</option>{{range $opts}}{{if ne .ID $c.ID}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}</select></div>
+            <div><button class="btn sm secondary" onclick="return confirm('Move every operation and merchant of {{.Name}} into the chosen category and delete {{.Name}}?')">Merge</button></div>
+          </form>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px">
+            <form method="post" action="/ui/categories"><input type="hidden" name="action" value="savings"><input type="hidden" name="id" value="{{.ID}}">
+              <button class="btn sm secondary">{{if .Savings}}Not savings{{else}}Mark as savings{{end}}</button></form>
+            <form method="post" action="/ui/categories"><input type="hidden" name="action" value="archive"><input type="hidden" name="id" value="{{.ID}}">
+              <button class="btn sm danger" onclick="return confirm('Archive {{.Name}}? It disappears from choices and merchants stop going there automatically; old operations keep it.')">Archive</button></form>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+  {{end}}
+</div>
+<p class="muted small" style="margin-top: 12px">Savings categories (deposits, investments) can be left out with the “Without savings” switch on the analytics page. Merging moves operations, remembered merchants and guesses.</p>
+
+{{if .Archived}}
+<h2 class="section">Archived</h2>
+<div class="ops">
+  {{range .Archived}}
+  <div class="op">
+    <span class="ava" style="--h: {{hue .Name}}; opacity: .5" aria-hidden="true">{{initial .Name}}</span>
+    <div class="op-main"><a class="op-title muted" href="{{link "/ui/operations" "cat" .Name}}">{{.Name}}</a><div class="op-meta">all time {{kzt .All.Total}} · {{.All.Count}} operations</div></div>
+    <form method="post" action="/ui/categories"><input type="hidden" name="action" value="restore"><input type="hidden" name="id" value="{{.ID}}"><button class="btn sm secondary">Restore</button></form>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{template "foot" .}}

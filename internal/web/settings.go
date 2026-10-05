@@ -58,6 +58,7 @@ func (s *Server) WithSettings(cfg Settings) *Server {
 }
 
 type settingsData struct {
+	Page
 	Settings
 	OllamaUp  bool
 	Installed []string
@@ -75,7 +76,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 			d.Installed, _ = d.Ollama.Models(r.Context())
 		}
 	}
-	s.render(w, "settings.html", d)
+	s.show(w, r, "settings.html", "Settings", "settings", &d)
 }
 
 // chooseModel switches the analysis model; if it is missing, it is downloaded in the background first.

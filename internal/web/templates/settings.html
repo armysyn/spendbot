@@ -1,50 +1,56 @@
-{{template "head" "Settings"}}
-<h1>Settings</h1>
-{{with .Flash}}<div class="flash">{{.}}</div>{{end}}
+{{template "head" .Page}}
+<div class="page-head"><div><h1>Settings</h1><div class="sub">Everything runs on this computer; data never leaves it</div></div></div>
+{{template "flash" .Flash}}
 
-<h2>Local model</h2>
+<div class="grid g2">
 <div class="card">
+  <div class="card-head"><h3>Local model</h3>{{if .Model}}{{if .OllamaUp}}<span class="small"><span class="status-dot on"></span>Ollama running</span>{{else}}<span class="small"><span class="status-dot off"></span>Ollama not running</span>{{end}}{{end}}</div>
 {{if not .Model}}
   <p class="muted">The model is off (<code>ANALYSIS_LLM=off</code>). Buttons, merchant memory and reports work without it; there will be no guesses or tips.</p>
 {{else if not .OllamaUp}}
-  <p><b class="bad">Ollama is not running.</b> The model runs in the free Ollama app.</p>
-  <ol>
+  <p>The model runs in the free Ollama app.</p>
+  <ol class="small">
     <li>Download and install Ollama: <code>https://ollama.com/download</code> (on Windows, <code>start.bat</code> offers to install it).</li>
     <li>Start Ollama (the llama icon next to the clock) and refresh this page.</li>
   </ol>
 {{else}}
-  <p>Now: <b>{{.Current}}</b> {{if has .Installed .Current}}<span class="ok">✓ downloaded</span>{{else}}<span class="bad">— not downloaded, pick one below</span>{{end}}</p>
+  <p class="small" style="margin-top: 0">Now: <b>{{.Current}}</b> {{if has .Installed .Current}}<span class="pill ok">✓ downloaded</span>{{else}}<span class="pill up">not downloaded — pick one below</span>{{end}}</p>
   {{$cur := .Current}}{{$inst := .Installed}}{{$pull := .Pull}}
-  <div class="scroll"><table class="data">
-    <tr><th>Model</th><th>Size</th><th></th><th></th></tr>
+  <div class="ops" style="box-shadow: none">
     {{range .Choices}}
-    <tr><td><b>{{.Name}}</b>{{if eq .Name $cur}} <span class="badge">selected</span>{{end}}</td><td class="num">{{.Size}}</td><td class="small muted">{{.Note}}</td>
-      <td>{{if ne .Name $cur}}<form method="post" action="/ui/settings/model"><input type="hidden" name="model" value="{{.Name}}">
-        <button class="ghost" {{if $pull.Running}}disabled{{end}}>{{if has $inst .Name}}Use{{else}}Download and use{{end}}</button></form>{{end}}</td></tr>
+    <div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
+      <div class="op-main"><span class="op-title">{{.Name}} <span class="muted small" style="font-weight: 400">· {{.Size}}</span>{{if eq .Name $cur}} <span class="pill ok">selected</span>{{end}}</span><div class="op-meta">{{.Note}}</div></div>
+      <div>{{if ne .Name $cur}}<form method="post" action="/ui/settings/model"><input type="hidden" name="model" value="{{.Name}}">
+        <button class="btn sm secondary" {{if $pull.Running}}disabled{{end}}>{{if has $inst .Name}}Use{{else}}Download{{end}}</button></form>{{end}}</div>
+    </div>
     {{end}}
-  </table></div>
-  <div id="pull" {{if not (or .Pull.Running .Pull.Err)}}hidden{{end}} style="margin-top: 12px">
-    <div class="small">Downloading <b id="pull-model">{{.Pull.Model}}</b>: <span id="pull-status">{{.Pull.Status}}</span> <span id="pull-gb"></span></div>
+  </div>
+  <div id="pull" {{if not (or .Pull.Running .Pull.Err)}}hidden{{end}} style="margin-top: 14px">
+    <div class="small">Downloading <b id="pull-model">{{.Pull.Model}}</b>: <span id="pull-status">{{.Pull.Status}}</span> <span id="pull-gb" class="muted"></span></div>
     <progress id="pull-bar" max="100" value="0"></progress>
     <div id="pull-err" class="bad small">{{.Pull.Err}}</div>
   </div>
-  <p class="muted small">The model guesses categories of new merchants and writes tips. The program does all the math, not the model. Data never leaves this computer.</p>
+  <p class="muted small">The model guesses categories of new merchants and writes tips. The program does all the math, not the model.</p>
 {{end}}
 </div>
 
-<h2>Apple Wallet payments</h2>
+<div class="stack">
 <div class="card">
-  <p class="small">In the iPhone Shortcuts app: a Transaction automation → Get Contents of URL, method POST, JSON with <code>amount</code>, <code>merchant</code>, <code>card</code>, <code>at</code>.</p>
-  <p class="small">URL: <code>{{.IngestURL}}</code><br>Header: <code>Authorization: Bearer {{.IngestToken}}</code></p>
+  <div class="card-head"><h3>Connections</h3></div>
+  <dl class="kv">
+    <dt>Telegram bot</dt><dd>{{if .Telegram}}<span class="status-dot on"></span>connected{{else}}<span class="status-dot"></span>not connected — questions and insights are on this page{{end}}</dd>
+    <dt>ClickHouse</dt><dd>{{if .ClickHouse}}<span class="status-dot on"></span>connected{{else}}<span class="status-dot"></span>not used — everything is computed from the main database{{end}}</dd>
+    <dt>Data and backups</dt><dd><code>{{.DataDir}}</code></dd>
+    <dt>Settings file</dt><dd>{{if .ConfigFile}}<code>{{.ConfigFile}}</code>{{else}}environment variables only{{end}}</dd>
+  </dl>
+</div>
+<div class="card">
+  <div class="card-head"><h3>Apple Wallet payments</h3><span class="muted tiny">optional</span></div>
+  <p class="small" style="margin-top: 0">In the iPhone Shortcuts app: a <b>Transaction</b> automation → <b>Get Contents of URL</b>, method POST, JSON with <code>amount</code>, <code>merchant</code>, <code>card</code>, <code>at</code>.</p>
+  <dl class="kv small"><dt>URL</dt><dd><code>{{.IngestURL}}</code></dd><dt>Header</dt><dd><code>Authorization: Bearer {{.IngestToken}}</code></dd></dl>
   <p class="muted small">The phone must reach this computer (same Wi-Fi or Tailscale). Without the automation everything works from statements.</p>
 </div>
-
-<h2>Where things are</h2>
-<div class="card small">
-  <p>Data and backups: <code>{{.DataDir}}</code></p>
-  <p>Settings: {{if .ConfigFile}}<code>{{.ConfigFile}}</code>{{else}}environment variables only{{end}}</p>
-  <p>Telegram bot: {{if .Telegram}}<span class="ok">connected</span>{{else}}not connected — questions and insights are on this page only{{end}}</p>
-  <p>ClickHouse: {{if .ClickHouse}}<span class="ok">connected</span>{{else}}not used — everything is computed from the main database{{end}}</p>
+</div>
 </div>
 
 <script>
@@ -64,4 +70,4 @@
   tick();
 })();
 </script>
-{{template "foot"}}
+{{template "foot" .}}

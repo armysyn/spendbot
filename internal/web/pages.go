@@ -1,0 +1,755 @@
+package web
+
+import (
+	"context"
+	"encoding/csv"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"spendbot/internal/analytics"
+	"spendbot/internal/kaspi"
+	"spendbot/internal/merchant"
+	"spendbot/internal/money"
+	"spendbot/internal/store"
+)
+
+// Page is what the layout needs: the title, the active menu item and the number of open questions.
+type Page struct {
+	Title string
+	Nav   string
+	Open  int // merchants waiting for an answer in open batches
+}
+
+func (p *Page) page() *Page { return p }
+
+type pager interface{ page() *Page }
+
+// openQuestions counts merchants in open batches for the menu badge.
+func (s *Server) openQuestions(ctx context.Context) int {
+	bs, err := s.st.Batches(ctx, false, 100)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, b := range bs {
+		n += b.Items
+	}
+	return n
+}
+
+func (s *Server) show(w http.ResponseWriter, r *http.Request, name, title, nav string, data pager) {
+	p := data.page()
+	p.Title, p.Nav, p.Open = title, nav, s.openQuestions(r.Context())
+	s.render(w, name, data)
+}
+
+// link builds a page URL from key-value pairs, skipping empty values.
+func link(path string, kv ...string) string {
+	q := url.Values{}
+	for i := 0; i+1 < len(kv); i += 2 {
+		if kv[i+1] != "" {
+			q.Set(kv[i], kv[i+1])
+		}
+	}
+	if len(q) == 0 {
+		return path
+	}
+	return path + "?" + q.Encode()
+}
+
+// change is a comparison with the previous period for the page: spending going up is bad.
+type change struct {
+	Text  string
+	Class string // up, down or flat
+	Title string
+}
+
+func changeOf(c analytics.Change) change {
+	if !c.OK {
+		return change{}
+	}
+	out := change{Title: "previous period: " + money.Format(c.Prev, money.DefaultCurrency)}
+	switch {
+	case c.Pct >= 100:
+		// "↑ 1214%" reads badly: past double, show how many times bigger
+		ratio := 1 + c.Pct/100
+		prec := 1
+		if ratio >= 10 {
+			prec = 0
+		}
+		out.Text, out.Class = "↑ ×"+strconv.FormatFloat(ratio, 'f', prec, 64), "up"
+	case c.Pct >= 0.5:
+		out.Text, out.Class = "↑ "+pctString(c.Pct), "up"
+	case c.Pct <= -0.5:
+		out.Text, out.Class = "↓ "+pctString(-c.Pct), "down"
+	default:
+		out.Text, out.Class = "≈ same", "flat"
+	}
+	return out
+}
+
+// bounds are the first and last days of the data: of spending, or of any operation when
+// there is no spending yet.
+func bounds(rows []store.LedgerRow) (first, last time.Time, ok bool) {
+	if first, last, ok = analytics.Bounds(rows); ok {
+		return first, last, ok
+	}
+	for _, r := range rows {
+		if !ok || r.At.Before(first) {
+			first = r.At
+		}
+		if !ok || r.At.After(last) {
+			last = r.At
+		}
+		ok = true
+	}
+	day := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()) }
+	return day(first), day(last), ok
+}
+
+// latestMonth is the calendar month of the last day with data.
+func latestMonth(ps []analytics.Period) (analytics.Period, bool) {
+	for _, p := range ps {
+		if len(p.Key) == 7 {
+			return p, true
+		}
+	}
+	return analytics.Period{}, false
+}
+
+// ---- home ----
+
+type homeSummary struct {
+	Month     analytics.Period
+	D         analytics.Dashboard
+	Change    change
+	HasPrev   bool
+	PrevTitle string
+	Pace      int64 // projected month total while the month is in progress
+	Recent    []analytics.Op
+}
+
+func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		return nil, err
+	}
+	first, last, ok := bounds(rows)
+	if !ok {
+		return nil, nil
+	}
+	h := &homeSummary{}
+	ps := analytics.Periods(first, last)
+	if m, ok := latestMonth(ps); ok {
+		h.Month = m
+		h.D = analytics.Build(rows, m, nil)
+		prev := m.Prev()
+		if h.HasPrev = !prev.From.Before(first); h.HasPrev {
+			h.Change = changeOf(analytics.Compare(h.D.Totals.Spend, analytics.Build(rows, prev, nil).Totals.Spend))
+			h.PrevTitle = prev.Title
+		}
+		monthStart := time.Date(m.From.Year(), m.From.Month(), 1, 0, 0, 0, 0, m.From.Location())
+		full := monthStart.AddDate(0, 1, 0)
+		if days := m.Days(); m.To.Before(full) && days >= 3 && monthStart.Equal(m.From) {
+			total := int(full.Sub(monthStart).Hours()/24 + 0.5)
+			h.Pace = h.D.Totals.Spend * int64(total) / int64(days)
+		}
+	}
+	all := analytics.Period{Key: "all", From: first, To: last.AddDate(0, 0, 1)}
+	ops := analytics.Operations(rows, analytics.Filter{Period: all, Type: analytics.TypeAll}).Ops
+	if len(ops) > 8 {
+		ops = ops[:8]
+	}
+	h.Recent = ops
+	return h, nil
+}
+
+// ---- operations ----
+
+type dayGroup struct {
+	Date  time.Time
+	Total int64 // spending of the day among the shown operations
+	Ops   []analytics.Op
+}
+
+type operationsData struct {
+	Page
+	Flash        string
+	Empty        bool
+	Periods      []analytics.Period
+	Current      analytics.Period
+	Custom       bool // the period is a from–to range, not one of Periods
+	From, To     string
+	Type         string
+	Category     string
+	Merchant     string // merchant key
+	MerchantName string
+	Query        string
+	NoSavings    bool
+	Categories   []store.Category
+	Ops          analytics.Ops
+	Days         []dayGroup
+	Shown        int
+	More         string // link to show more, empty when everything is shown
+	Back         string // this page, to come back after an edit
+	CSV          string
+}
+
+const opsPage = 300
+
+// filterFrom reads the operations filter from the query string.
+func filterFrom(q url.Values, ps []analytics.Period, loc *time.Location) (analytics.Filter, bool) {
+	f := analytics.Filter{Type: q.Get("type"), Category: q.Get("cat"), Merchant: q.Get("m"), Query: strings.TrimSpace(q.Get("q"))}
+	switch f.Type {
+	case analytics.TypeSpend, analytics.TypeTransfers, analytics.TypeAll:
+	default:
+		f.Type = analytics.TypeSpend
+	}
+	for _, p := range ps {
+		if p.Key == "all" {
+			f.Period = p
+		}
+	}
+	for _, p := range ps {
+		if p.Key == q.Get("period") {
+			f.Period = p
+		}
+	}
+	from, err1 := time.ParseInLocation("2006-01-02", q.Get("from"), loc)
+	to, err2 := time.ParseInLocation("2006-01-02", q.Get("to"), loc)
+	if err1 == nil && err2 == nil && !to.Before(from) {
+		f.Period = analytics.Period{Key: "custom", From: from, To: to.AddDate(0, 0, 1)}
+		f.Period.Title = from.Format("2 Jan 2006")
+		if !to.Equal(from) {
+			f.Period.Title += " – " + to.Format("2 Jan 2006")
+		}
+		return f, true
+	}
+	return f, false
+}
+
+func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	d := &operationsData{Flash: r.URL.Query().Get("msg")}
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	first, last, ok := bounds(rows)
+	if !ok {
+		d.Empty = true
+		s.show(w, r, "operations.html", "Operations", "operations", d)
+		return
+	}
+	q := r.URL.Query()
+	d.Periods = analytics.Periods(first, last)
+	f, custom := filterFrom(q, d.Periods, s.loc)
+	if d.NoSavings = q.Get("nosave") == "1"; d.NoSavings && f.Type == analytics.TypeSpend {
+		if f.Exclude, err = s.st.SavingsNames(ctx); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	d.Current, d.Custom = f.Period, custom
+	if custom {
+		d.From, d.To = q.Get("from"), q.Get("to")
+	}
+	d.Type, d.Category, d.Merchant, d.Query = f.Type, f.Category, f.Merchant, f.Query
+	if d.Categories, err = s.st.Categories(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	d.Ops = analytics.Operations(rows, f)
+	if d.Merchant != "" && len(d.Ops.Ops) > 0 {
+		d.MerchantName = d.Ops.Ops[0].Merchant
+	}
+	limit := opsPage
+	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > limit {
+		limit = n
+	}
+	shown := d.Ops.Ops
+	if len(shown) > limit {
+		shown = shown[:limit]
+		mq := cloneValues(q)
+		mq.Set("limit", strconv.Itoa(limit+opsPage))
+		d.More = "/ui/operations?" + mq.Encode()
+	}
+	d.Shown = len(shown)
+	for _, o := range shown {
+		day := time.Date(o.At.Year(), o.At.Month(), o.At.Day(), 0, 0, 0, 0, o.At.Location())
+		if n := len(d.Days); n == 0 || !d.Days[n-1].Date.Equal(day) {
+			d.Days = append(d.Days, dayGroup{Date: day})
+		}
+		g := &d.Days[len(d.Days)-1]
+		g.Ops = append(g.Ops, o)
+		if o.Spend {
+			g.Total += o.Amount
+		}
+	}
+	d.Back = r.URL.RequestURI()
+	cq := cloneValues(q)
+	cq.Del("limit")
+	cq.Del("msg")
+	d.CSV = "/ui/operations.csv?" + cq.Encode()
+	s.show(w, r, "operations.html", "Operations", "operations", d)
+}
+
+func cloneValues(q url.Values) url.Values {
+	out := url.Values{}
+	for k, v := range q {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+// operationsCSV exports the filtered operations for a spreadsheet.
+func (s *Server) operationsCSV(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var ops []analytics.Op
+	if first, last, ok := bounds(rows); ok {
+		f, _ := filterFrom(r.URL.Query(), analytics.Periods(first, last), s.loc)
+		if r.URL.Query().Get("nosave") == "1" && f.Type == analytics.TypeSpend {
+			if f.Exclude, err = s.st.SavingsNames(ctx); err != nil {
+				s.fail(w, err)
+				return
+			}
+		}
+		ops = analytics.Operations(rows, f).Ops
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="spendbot-operations.csv"`)
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"date", "time", "merchant", "kind", "category", "amount", "spending"})
+	for _, o := range ops {
+		cat := strings.Join(o.Categories, " + ")
+		cw.Write([]string{o.At.Format("2006-01-02"), o.At.Format("15:04"), o.Merchant, kaspi.KindName(o.Kind), cat,
+			strconv.FormatFloat(float64(o.Amount)/100, 'f', 2, 64), strconv.FormatBool(o.Spend)})
+	}
+	cw.Flush()
+}
+
+// safeBack keeps redirects on this site's pages.
+func safeBack(back, fallback string) string {
+	if strings.HasPrefix(back, "/ui") && !strings.HasPrefix(back, "//") {
+		return back
+	}
+	return fallback
+}
+
+func withMsg(back, msg string) string {
+	u, err := url.Parse(back)
+	if err != nil {
+		return back
+	}
+	q := u.Query()
+	q.Set("msg", msg)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// opCategory changes the category of one operation, or of all purchases from its merchant.
+// Fields: category ("none" — not spending, or a category id), new_category (wins), all ("1").
+func (s *Server) opCategory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	back := safeBack(r.PostFormValue("back"), "/ui/operations")
+	tx, err := s.st.GetTx(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		s.fail(w, err)
+		return
+	}
+	switch tx.Kind {
+	case "", kaspi.Purchase, kaspi.Withdrawal, kaspi.Transfer:
+	default:
+		http.Redirect(w, r, withMsg(back, "Incoming money has no category."), http.StatusSeeOther)
+		return
+	}
+	cat := r.PostFormValue("category")
+	if newCat := strings.Join(strings.Fields(r.PostFormValue("new_category")), " "); newCat != "" {
+		cid, err := s.ensureCategory(ctx, newCat)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		cat = strconv.FormatInt(cid, 10)
+	}
+	name := tx.MerchantRaw
+	if tx.Kind == kaspi.Withdrawal {
+		name = analytics.CashMerchant
+	}
+	var msg string
+	switch cat {
+	case "":
+		http.Redirect(w, r, withMsg(back, "Pick a category."), http.StatusSeeOther)
+		return
+	case "none":
+		if err := s.st.UncategorizeTx(ctx, id); err != nil {
+			s.fail(w, err)
+			return
+		}
+		msg = "Not counted as spending any more: " + displayName(name) + "."
+	default:
+		cid, err := strconv.ParseInt(cat, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid category", http.StatusBadRequest)
+			return
+		}
+		c, err := s.st.Category(ctx, cid)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		all := r.PostFormValue("all") == "1" && tx.MerchantNorm != "" && (tx.Kind == "" || tx.Kind == kaspi.Purchase)
+		switch {
+		case all:
+			n, err := s.st.RecategorizeMerchant(ctx, tx.MerchantNorm, cid, s.minHits, s.now())
+			if err != nil {
+				s.fail(w, err)
+				return
+			}
+			msg = fmt.Sprintf("%d %s from %s moved to \"%s\"; new ones will follow.", n, plural(n, "purchase", "purchases"), displayName(name), c.Name)
+		case tx.AmountMinor == 0:
+			http.Redirect(w, r, withMsg(back, "The amount of this operation is unknown — answer it in Telegram."), http.StatusSeeOther)
+			return
+		default:
+			learn := tx.Kind != kaspi.Withdrawal
+			if _, err := s.st.CloseTx(ctx, id, []store.Split{{CategoryID: cid, AmountMinor: tx.AmountMinor}}, learn, s.now()); err != nil {
+				s.fail(w, err)
+				return
+			}
+			msg = displayName(name) + " → \"" + c.Name + "\"."
+		}
+	}
+	if s.kick != nil {
+		s.kick.Kick()
+	}
+	http.Redirect(w, r, withMsg(back, msg), http.StatusSeeOther)
+}
+
+func displayName(raw string) string {
+	if raw == "" {
+		return "the operation"
+	}
+	return merchant.Display(raw)
+}
+
+// ---- categories ----
+
+type categoryRow struct {
+	store.Category
+	Year, All analytics.CategoryUsage
+	Rules     int
+	Pct       float64
+}
+
+type categoriesData struct {
+	Page
+	Flash    string
+	Active   []categoryRow
+	Archived []categoryRow
+	YearFrom time.Time
+	Options  []store.Category
+}
+
+func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	d := &categoriesData{Flash: r.URL.Query().Get("msg")}
+	cats, err := s.st.AllCategories(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	rules, err := s.st.CategoryRules(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var year, all map[string]analytics.CategoryUsage
+	if first, last, ok := bounds(rows); ok {
+		ps := analytics.Periods(first, last)
+		for _, p := range ps {
+			switch p.Key {
+			case "12m":
+				year = analytics.UsageByCategory(rows, p)
+				d.YearFrom = p.From
+			case "all":
+				all = analytics.UsageByCategory(rows, p)
+			}
+		}
+	}
+	var max int64
+	for _, c := range cats {
+		row := categoryRow{Category: c, Year: year[c.Name], All: all[c.Name], Rules: rules[c.ID]}
+		if row.Year.Total > max {
+			max = row.Year.Total
+		}
+		if c.Archived {
+			d.Archived = append(d.Archived, row)
+		} else {
+			d.Active = append(d.Active, row)
+			d.Options = append(d.Options, c)
+		}
+	}
+	for i := range d.Active {
+		if max > 0 && d.Active[i].Year.Total > 0 {
+			d.Active[i].Pct = float64(d.Active[i].Year.Total) * 100 / float64(max)
+		}
+	}
+	sort.SliceStable(d.Active, func(i, j int) bool { return d.Active[i].Year.Total > d.Active[j].Year.Total })
+	s.show(w, r, "categories.html", "Categories", "categories", d)
+}
+
+// categoryAction adds, renames, merges, archives and restores categories and marks savings.
+func (s *Server) categoryAction(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	back := func(msg string) { http.Redirect(w, r, "/ui/categories?msg="+urlq(msg), http.StatusSeeOther) }
+	name := strings.Join(strings.Fields(r.PostFormValue("name")), " ")
+	if len([]rune(name)) > 40 {
+		name = string([]rune(name)[:40])
+	}
+	id, _ := strconv.ParseInt(r.PostFormValue("id"), 10, 64)
+	var c store.Category
+	if r.PostFormValue("action") != "add" {
+		var err error
+		if c, err = s.st.Category(ctx, id); errors.Is(err, store.ErrNotFound) {
+			back("No such category.")
+			return
+		} else if err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	var err error
+	var msg string
+	switch r.PostFormValue("action") {
+	case "add":
+		if name == "" {
+			back("Type a name for the new category.")
+			return
+		}
+		_, err = s.st.AddCategory(ctx, name)
+		msg = "Category \"" + name + "\" added."
+	case "rename":
+		if name == "" || name == c.Name {
+			back("Nothing to change.")
+			return
+		}
+		other, ferr := s.st.FindCategory(ctx, name)
+		switch {
+		case ferr == nil && other.ID != c.ID:
+			err = s.st.MergeCategory(ctx, c.ID, other.ID)
+			msg = "\"" + other.Name + "\" already exists — \"" + c.Name + "\" was merged into it."
+		case ferr != nil && !errors.Is(ferr, store.ErrNotFound):
+			err = ferr
+		default:
+			err = s.st.RenameCategory(ctx, c.ID, name)
+			msg = "\"" + c.Name + "\" is now \"" + name + "\"."
+		}
+	case "merge":
+		into, perr := strconv.ParseInt(r.PostFormValue("into"), 10, 64)
+		if perr != nil || into == c.ID {
+			back("Pick another category to merge into.")
+			return
+		}
+		target, terr := s.st.Category(ctx, into)
+		if terr != nil {
+			back("No such category.")
+			return
+		}
+		err = s.st.MergeCategory(ctx, c.ID, into)
+		msg = "\"" + c.Name + "\" merged into \"" + target.Name + "\"."
+	case "archive":
+		err = s.st.ArchiveCategory(ctx, c.ID)
+		msg = "\"" + c.Name + "\" archived: hidden from choices, old operations keep it."
+	case "restore":
+		err = s.st.RestoreCategory(ctx, c.ID)
+		msg = "\"" + c.Name + "\" restored."
+	case "savings":
+		var ids []int64
+		cats, cerr := s.st.AllCategories(ctx)
+		if cerr != nil {
+			s.fail(w, cerr)
+			return
+		}
+		for _, x := range cats {
+			if x.Savings != (x.ID == c.ID) {
+				ids = append(ids, x.ID)
+			}
+		}
+		err = s.st.SetSavings(ctx, ids)
+		if c.Savings {
+			msg = "\"" + c.Name + "\" is spending again."
+		} else {
+			msg = "\"" + c.Name + "\" is savings: the \"without savings\" switch leaves it out."
+		}
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if s.kick != nil {
+		s.kick.Kick()
+	}
+	back(msg)
+}
+
+// ---- calendar heatmap ----
+
+type heatCell struct {
+	Date  time.Time
+	Value int64
+	Level int
+	In    bool // inside the period
+}
+
+type heatmap struct {
+	Weeks  [][7]heatCell
+	Months []heatMonth
+	Max    int64
+}
+
+type heatMonth struct {
+	Col   int
+	Label string
+}
+
+// heat lays the period's daily spending out as weeks (columns) of days, Monday first.
+// The shade is the quartile of the day among days with spending.
+func heat(rows []store.LedgerRow, p analytics.Period, exclude []string) *heatmap {
+	days := p.Days()
+	if days < 28 || days > 400 {
+		return nil
+	}
+	byDay := map[time.Time]int64{}
+	for _, o := range analytics.Operations(rows, analytics.Filter{Period: p, Exclude: exclude}).Ops {
+		d := time.Date(o.At.Year(), o.At.Month(), o.At.Day(), 0, 0, 0, 0, o.At.Location())
+		byDay[d] += o.Amount
+	}
+	var vals []int64
+	h := &heatmap{}
+	for _, v := range byDay {
+		if v > 0 {
+			vals = append(vals, v)
+		}
+		if v > h.Max {
+			h.Max = v
+		}
+	}
+	sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
+	q := func(f float64) int64 {
+		if len(vals) == 0 {
+			return 0
+		}
+		return vals[int(f*float64(len(vals)-1))]
+	}
+	cut := [3]int64{q(.25), q(.5), q(.75)}
+	start := p.From.AddDate(0, 0, -((int(p.From.Weekday()) + 6) % 7))
+	lastMonth := -1
+	for t := start; t.Before(p.To); t = t.AddDate(0, 0, 7) {
+		var wk [7]heatCell
+		for i := range 7 {
+			d := t.AddDate(0, 0, i)
+			c := heatCell{Date: d, Value: byDay[d], In: !d.Before(p.From) && d.Before(p.To)}
+			if c.In && c.Value > 0 {
+				c.Level = 1
+				for _, x := range cut {
+					if c.Value > x {
+						c.Level++
+					}
+				}
+			}
+			wk[i] = c
+			if c.In && int(d.Month()) != lastMonth {
+				lastMonth = int(d.Month())
+				// a label needs room: skip it when the previous one is in the same or the last column
+				if n := len(h.Months); n == 0 || len(h.Weeks)-h.Months[n-1].Col >= 3 {
+					h.Months = append(h.Months, heatMonth{Col: len(h.Weeks), Label: d.Format("Jan")})
+				}
+			}
+		}
+		h.Weeks = append(h.Weeks, wk)
+	}
+	return h
+}
+
+// ---- columns chart ----
+
+type column struct {
+	analytics.Bar
+	Href  string
+	Axis  string // label under the column; empty when labels would collide
+	Shown bool   // the value is printed above the column
+}
+
+type columns struct {
+	Label  string
+	Cols   []column
+	Avg    int64
+	AvgPct float64
+	Short  bool
+}
+
+// cols prepares a columns chart: links for drill-down (target "month" opens the month on the
+// analytics page, otherwise the operations of the column), a sparse axis and the average line.
+func cols(bars []analytics.Bar, target, nosave, label string, short bool) columns {
+	c := columns{Label: label, Short: short}
+	n := len(bars)
+	if n == 0 {
+		return c
+	}
+	every := (n + 7) / 8
+	var sum, max int64
+	for _, b := range bars {
+		sum += b.Value
+		if b.Value > max {
+			max = b.Value
+		}
+	}
+	c.Avg = sum / int64(n)
+	if max > 0 && n > 1 && c.Avg > 0 {
+		c.AvgPct = float64(c.Avg) * 100 / float64(max)
+	}
+	for i, b := range bars {
+		col := column{Bar: b, Shown: b.Value > 0 && (b.Value == max || i == n-1)}
+		if target == "month" {
+			col.Href = link("/ui/analytics", "period", b.From.Format("2006-01"), "nosave", nosave)
+		} else {
+			col.Href = link("/ui/operations", "from", b.From.Format("2006-01-02"), "to", b.To.AddDate(0, 0, -1).Format("2006-01-02"), "nosave", nosave)
+		}
+		if i%every == 0 {
+			col.Axis = b.Label
+			if target != "month" && len(b.Label) > 7 {
+				col.Axis = b.From.Format("2 Jan")
+			}
+		}
+		c.Cols = append(c.Cols, col)
+	}
+	return c
+}

@@ -1,0 +1,55 @@
+{{/* One operation row. Takes dict: Op, Cats (categories for editing, nil — no editing), Back, Type. */}}
+{{define "op"}}{{$o := .Op}}
+<div class="op">
+  <span class="ava{{if eq $o.MerchantKey "#cash"}} cash{{end}}" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>
+  <div class="op-main">
+    {{if $o.MerchantKey}}<a class="op-title" href="{{link "/ui/operations" "m" $o.MerchantKey "type" .Type}}" title="All operations of {{$o.Merchant}}">{{$o.Merchant}}</a>{{else}}<span class="op-title">{{$o.Merchant}}</span>{{end}}
+    <div class="op-meta">
+      {{if and (ne $o.Source "import") (hasTime $o.At)}}<span>{{hm $o.At}}</span>{{end}}
+      {{if $o.Kind}}{{if not (purchase $o.Kind)}}<span class="tag">{{kind $o.Kind}}</span>{{end}}{{else if eq $o.Source "wallet"}}<span class="tag">Apple Wallet</span>{{else if eq $o.Source "manual"}}<span class="tag">manual</span>{{end}}
+      {{if $o.Spend}}
+        {{range $o.Categories}}<a class="tag" href="{{link "/ui/operations" "cat" .}}">{{.}}</a>{{else}}{{if ne $o.MerchantKey "#cash"}}<span class="tag none">no category</span>{{end}}{{end}}
+      {{else if eq $o.Status "ignored"}}<span class="tag">skipped</span>{{end}}
+    </div>
+  </div>
+  <div class="op-amt-wrap" style="display: flex; align-items: center; gap: 4px">
+    {{if and $o.Spend (ge $o.Amount 0)}}<div class="op-amt">−{{kzt $o.Amount}}{{if ne $o.Amount $o.Full}}<span class="full">part of {{kzt $o.Full}}</span>{{end}}</div>
+    {{else if lt $o.Amount 0}}<div class="op-amt in">+{{kzt (abs $o.Amount)}}{{if $o.Spend}}<span class="full">refund</span>{{end}}</div>
+    {{else}}<div class="op-amt off">−{{kzt $o.Amount}}</div>{{end}}
+    {{if and .Cats $o.Editable}}
+    <details class="edit">
+      <summary class="btn ghost sm" aria-label="Change category" title="Change category">{{template "icon" "edit"}}</summary>
+      <form class="edit-pop" method="post" action="/ui/op/{{$o.TxID}}/category">
+        <div><b>{{$o.Merchant}}</b> <span class="muted small">· {{date $o.At}} · {{kzt (abs $o.Full)}}</span></div>
+        {{$cur := ""}}{{if and $o.Spend (eq (len $o.Categories) 1)}}{{$cur = index $o.Categories 0}}{{end}}
+        <select name="category" aria-label="Category">
+          <option value="" disabled {{if and $o.Spend (not $cur)}}selected{{end}}>Choose a category…</option>
+          {{range .Cats}}<option value="{{.ID}}" {{if eq .Name $cur}}selected{{end}}>{{.Name}}</option>{{end}}
+          <option value="none" {{if not $o.Spend}}selected{{end}}>Not spending</option>
+        </select>
+        <input type="text" name="new_category" placeholder="or a new category" maxlength="40" aria-label="New category">
+        {{if and $o.MerchantKey (or (eq $o.Kind "") (purchase $o.Kind))}}
+        <label class="check"><input type="checkbox" name="all" value="1" checked> All purchases from {{$o.Merchant}} — past ones and future ones</label>
+        {{end}}
+        <input type="hidden" name="back" value="{{.Back}}">
+        <div><button class="btn sm">Save</button></div>
+      </form>
+    </details>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* Columns chart, see cols in pages.go. */}}
+{{define "cols"}}{{$n := len .Cols}}
+<div class="cols{{if .Short}} short{{end}}" role="img" aria-label="{{.Label}}">
+  {{if .AvgPct}}<div class="avg" style="bottom: calc({{width .AvgPct}} * 0.82)"><span>avg {{compact .Avg}}</span></div>{{end}}
+  {{range .Cols}}
+  <a class="col{{if not .Value}} zero{{end}}" href="{{.Href}}" data-tip="{{.Label}} · {{kzt .Value}}{{if .Value}} · {{pct .Share}} of the period{{end}} · {{.Sub}}">
+    {{if .Shown}}<span class="col-val">{{compact .Value}}</span>{{end}}
+    <div class="col-fill" style="height: calc({{width .Pct}} * 0.82)"></div>
+  </a>
+  {{end}}
+</div>
+<div class="axis" aria-hidden="true">{{range .Cols}}<span>{{.Axis}}</span>{{end}}</div>
+{{end}}

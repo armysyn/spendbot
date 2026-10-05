@@ -1,21 +1,19 @@
-{{template "head" "Statement import"}}
-<h1>Statement import</h1>
+{{template "head" .Page}}
+<div class="page-head"><div><h1>Statement import</h1>{{if .File}}<div class="sub">{{.File}}{{if not .Err}} · {{date .From}} – {{date .To}}{{end}}</div>{{end}}</div></div>
 {{if .Err}}
-  <div class="flash">{{.Err}}</div>
+  <div class="flash bad">{{template "icon" "x"}}<div>{{.Err}}</div></div>
+  <a class="btn" href="/ui#upload">Try another file</a>
 {{else}}
-  <div class="card">
-    <b>{{.File}}</b> <span class="muted">· {{date .From}} – {{date .To}}</span>
-    <p>Operations in the statement: <b>{{.Result.Total}}</b></p>
-    <ul>
-      <li>new purchases categorized from merchant memory: <b>{{.Result.Auto}}</b></li>
-      <li>purchases without a category (questions come in a batch): <b>{{.Result.Review}}</b></li>
-      <li>not spending — incoming money and transfers: <b>{{.Result.Info}}</b></li>
-      <li>matched Wallet payments: <b>{{.Result.Matched}}</b></li>
-      <li>already imported: <b>{{.Result.Duplicates}}</b></li>
-    </ul>
-    {{with .Result.Verify}}<div class="flash">The statement totals do not match: {{.}}. Please report it — the parser needs a fix.</div>{{end}}
-    <p class="muted small">The analysis is already running in the background. Questions and insights will show up on the home page (and in Telegram, if connected).</p>
+  {{with .Result.Verify}}<div class="flash bad">{{template "icon" "x"}}<div>The statement totals do not match: {{.}}. Please report it — the parser needs a fix.</div></div>{{else}}<div class="flash">{{template "icon" "shield"}}<div>Parsed and checked against the statement's header totals.</div></div>{{end}}
+  <div class="kpis" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))">
+    <div class="kpi"><div class="label">In the statement</div><div class="value num">{{.Result.Total}}</div><div class="note">operations</div></div>
+    <div class="kpi"><div class="label">Categorized</div><div class="value num">{{.Result.Auto}}</div><div class="note">from remembered merchants</div></div>
+    <div class="kpi"><div class="label">Need a category</div><div class="value num">{{.Result.Review}}</div><div class="note">questions come in a batch</div></div>
+    <div class="kpi"><div class="label">Not spending</div><div class="value num">{{.Result.Info}}</div><div class="note">incoming money, transfers</div></div>
+    <div class="kpi"><div class="label">Already there</div><div class="value num">{{add .Result.Duplicates .Result.Matched}}</div><div class="note">{{.Result.Duplicates}} imported before · {{.Result.Matched}} Wallet {{plural .Result.Matched "match" "matches"}}</div></div>
   </div>
+  <p class="muted small" style="margin: 16px 0">The analysis is already running in the background: questions and insights will appear on the home page (and in Telegram, if connected).</p>
+  <p class="muted small">Operations in the statement: <b>{{.Result.Total}}</b></p>
+  <div class="actions"><a class="btn" href="/ui">Home</a><a class="btn secondary" href="{{link "/ui/operations" "from" (ymd .From) "to" (ymd .To) "type" "all"}}">See these operations</a></div>
 {{end}}
-<a class="btn" href="/ui">Home</a>
-{{template "foot"}}
+{{template "foot" .}}

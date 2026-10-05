@@ -1,0 +1,183 @@
+package web
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"spendbot/internal/kaspi"
+	"spendbot/internal/store"
+)
+
+func seedOps(t *testing.T, st *store.Store) (purchase, cash int64) {
+	t.Helper()
+	ctx := context.Background()
+	food, _ := st.FindCategory(ctx, "Groceries")
+	ops := []struct {
+		day            int
+		raw, kind, sts string
+		amount         int64
+	}{
+		{1, "MAGNUM", kaspi.Purchase, store.StatusReview, 450000},
+		{2, "MAGNUM #12", kaspi.Purchase, store.StatusReview, 120000},
+		{3, "ATM", kaspi.Withdrawal, store.StatusReview, 2000000},
+		{4, "Adam S.", kaspi.Transfer, store.StatusInfo, 5000000},
+		{5, "Adam S.", kaspi.TopUp, store.StatusInfo, -1000000},
+		{40, "COFFEE BOOM", kaspi.Purchase, store.StatusPending, 150000},
+	}
+	var ids []int64
+	for i, o := range ops {
+		at := time.Date(2026, 8, 1, 12, 0, 0, 0, almaty).AddDate(0, 0, o.day)
+		id, _, err := st.InsertTx(ctx, store.Tx{ExternalKey: itoa(int64(i)), OccurredAt: at, AmountMinor: o.amount, Currency: "KZT",
+			MerchantRaw: o.raw, MerchantNorm: strings.ToLower(strings.Fields(o.raw)[0]), Kind: o.kind, Source: store.SourceImport,
+			Status: o.sts, CreatedAt: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	st.CloseTx(ctx, ids[5], []store.Split{{CategoryID: food.ID, AmountMinor: 150000}}, true, time.Now())
+	return ids[0], ids[2]
+}
+
+// Every page renders to the end with data: a template error would cut the page short.
+func TestPagesRender(t *testing.T) {
+	h, st, _ := setup(t)
+	for _, empty := range []bool{true, false} {
+		if !empty {
+			seedOps(t, st)
+		}
+		for _, p := range []string{"/ui", "/ui/analytics", "/ui/analytics?period=2026-08", "/ui/analytics?period=30d&nosave=1",
+			"/ui/operations", "/ui/operations?type=all", "/ui/operations?type=transfers", "/ui/operations?cat=Cash&period=all",
+			"/ui/operations?from=2026-08-02&to=2026-08-04&q=magnum", "/ui/operations?m=magnum", "/ui/categories",
+			"/ui/transfers", "/ui/transfers?name=Adam+S."} {
+			w := do(h, "GET", p, nil, "", true)
+			if w.Code != http.StatusOK || !strings.HasSuffix(strings.TrimSpace(w.Body.String()), "</html>") {
+				t.Errorf("empty=%v %s: %d, cut short:\n%s", empty, p, w.Code, tail(w.Body.String()))
+			}
+		}
+	}
+}
+
+func tail(s string) string {
+	if len(s) > 300 {
+		return s[len(s)-300:]
+	}
+	return s
+}
+
+func post(h http.Handler, path string, form url.Values) *httptest.ResponseRecorder {
+	return do(h, "POST", path, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", true)
+}
+
+func TestOperationsPage(t *testing.T) {
+	h, st, k := setup(t)
+	ctx := context.Background()
+	purchase, cash := seedOps(t, st)
+	body := do(h, "GET", "/ui/operations?period=all", nil, "", true).Body.String()
+	for _, want := range []string{"Magnum", "Cash withdrawal", "Coffee Boom", "no category"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("operations page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "Adam S.") {
+		t.Error("a transfer without a category is not spending")
+	}
+
+	// one purchase — all purchases of the merchant follow and the merchant is remembered
+	home, _ := st.FindCategory(ctx, "Home")
+	w := post(h, "/ui/op/"+itoa(purchase)+"/category", url.Values{"category": {itoa(home.ID)}, "all": {"1"}, "back": {"/ui/operations?m=magnum"}})
+	if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/ui/operations?") || k.n != 1 {
+		t.Fatalf("edit: %d %s", w.Code, w.Header().Get("Location"))
+	}
+	if r, ok, _ := st.Rule(ctx, "magnum"); !ok || r.CategoryID != home.ID {
+		t.Errorf("rule %+v", r)
+	}
+	// cash gets a new category without teaching any merchant rule
+	post(h, "/ui/op/"+itoa(cash)+"/category", url.Values{"new_category": {"Savings box"}, "back": {"https://evil.example/"}})
+	box, err := st.FindCategory(ctx, "savings box")
+	if err != nil {
+		t.Fatal("new category not created")
+	}
+	if sp, _ := st.Splits(ctx, cash); len(sp) != 1 || sp[0].CategoryID != box.ID {
+		t.Errorf("cash split %+v", sp)
+	}
+	// not spending
+	post(h, "/ui/op/"+itoa(purchase)+"/category", url.Values{"category": {"none"}})
+	if tx, _ := st.GetTx(ctx, purchase); tx.Status != store.StatusIgnored {
+		t.Errorf("status %s", tx.Status)
+	}
+	// incoming money has no category
+	w = post(h, "/ui/op/"+itoa(purchase+4)+"/category", url.Values{"category": {itoa(home.ID)}})
+	if !strings.Contains(w.Header().Get("Location"), "msg=") {
+		t.Errorf("top-up edit: %s", w.Header().Get("Location"))
+	}
+
+	csv := do(h, "GET", "/ui/operations.csv?period=all", nil, "", true)
+	if csv.Header().Get("Content-Type") != "text/csv; charset=utf-8" || !strings.Contains(csv.Body.String(), "Coffee Boom") ||
+		!strings.HasPrefix(csv.Body.String(), "date,time,merchant") {
+		t.Errorf("csv:\n%s", csv.Body.String())
+	}
+}
+
+func TestSafeBack(t *testing.T) {
+	for in, want := range map[string]string{"/ui/operations?x=1": "/ui/operations?x=1", "https://evil.example": "/ui", "//evil": "/ui", "": "/ui"} {
+		if got := safeBack(in, "/ui"); got != want {
+			t.Errorf("%q → %q", in, got)
+		}
+	}
+}
+
+func TestCategoryActions(t *testing.T) {
+	h, st, _ := setup(t)
+	ctx := context.Background()
+	seedOps(t, st)
+	act := func(kv ...string) string {
+		f := url.Values{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			f.Set(kv[i], kv[i+1])
+		}
+		w := post(h, "/ui/categories", f)
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("%v: %d", kv, w.Code)
+		}
+		return w.Header().Get("Location")
+	}
+	act("action", "add", "name", "  Coffee  ")
+	coffee, err := st.FindCategory(ctx, "Coffee")
+	if err != nil {
+		t.Fatal("not added")
+	}
+	act("action", "rename", "id", itoa(coffee.ID), "name", "Cafe")
+	if c, _ := st.Category(ctx, coffee.ID); c.Name != "Cafe" {
+		t.Errorf("rename: %+v", c)
+	}
+	// renaming to an existing name merges
+	food, _ := st.FindCategory(ctx, "Groceries")
+	act("action", "rename", "id", itoa(food.ID), "name", "cafe")
+	if _, err := st.Category(ctx, food.ID); err != store.ErrNotFound {
+		t.Error("groceries must be merged into Cafe")
+	}
+	if r, _, _ := st.Rule(ctx, "coffee"); r.CategoryID != coffee.ID {
+		t.Errorf("rule follows the merge: %+v", r)
+	}
+	act("action", "savings", "id", itoa(coffee.ID))
+	if names, _ := st.SavingsNames(ctx); len(names) != 1 || names[0] != "Cafe" {
+		t.Errorf("savings %v", names)
+	}
+	act("action", "archive", "id", itoa(coffee.ID))
+	if c, _ := st.Category(ctx, coffee.ID); !c.Archived {
+		t.Error("archive")
+	}
+	act("action", "restore", "id", itoa(coffee.ID))
+	if c, _ := st.Category(ctx, coffee.ID); c.Archived {
+		t.Error("restore")
+	}
+	if loc := act("action", "merge", "id", itoa(coffee.ID), "into", itoa(coffee.ID)); !strings.Contains(loc, "msg=") {
+		t.Error("merge into itself must be refused")
+	}
+}

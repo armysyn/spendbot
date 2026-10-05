@@ -1,50 +1,103 @@
-{{template "head" "Home"}}
-{{with .Flash}}<div class="flash">{{.}}</div>{{end}}
-{{with .ModelHint}}<div class="flash">{{.}} <a href="/ui/settings">Open settings</a></div>{{end}}
+{{template "head" .Page}}
+{{$s := .Summary}}
+<div class="page-head">
+  <div>
+    <h1>{{if $s}}{{$s.Month.Title}}{{else}}Welcome{{end}}</h1>
+    <div class="sub">{{if $s}}{{date $s.Month.From}} – {{date ($s.Month.To.AddDate 0 0 -1)}} · up to the last day in your data{{else}}Upload a Kaspi Gold statement to begin{{end}}</div>
+  </div>
+  {{if $s}}<div class="actions"><a class="btn secondary sm" href="{{link "/ui/analytics" "period" $s.Month.Key}}">{{template "icon" "chart"}}Month analytics</a></div>{{end}}
+</div>
+{{template "flash" .Flash}}
+{{with .ModelHint}}<div class="flash warn">{{template "icon" "help"}}<div>{{.}} <a href="/ui/settings">Open settings</a></div></div>{{end}}
 
-<h2>Merchant questions</h2>
 {{if .Open}}
-  {{range .Open}}
-  <div class="card row">
-    <div>
-      <a href="/ui/batch/{{.ID}}"><b>Batch #{{.ID}}</b></a>
-      <span class="muted"> · {{.Items}} merchants · <span class="num">{{kzt .TotalMinor}}</span></span>
-      <div class="muted small">made {{datetime .CreatedAt}}</div>
-    </div>
-    <a class="btn" href="/ui/batch/{{.ID}}">Answer</a>
+<div class="card cta" style="margin-bottom: 14px">
+  <div>
+    <div style="font-size: 17px; font-weight: 650">{{.Page.Open}} {{plural .Page.Open "merchant needs" "merchants need"}} a category</div>
+    <div class="muted small">Answer once — their past purchases are categorized and future ones follow automatically.</div>
   </div>
-  {{end}}
-{{else}}
-  <div class="card muted">No open batches.</div>
+  <div class="actions">{{range .Open}}<a class="btn" href="/ui/batch/{{.ID}}">Batch #{{.ID}} · {{.Items}}</a>{{end}}</div>
+</div>
 {{end}}
-{{if .Waiting}}<p class="muted small">{{.Waiting}} more {{plural .Waiting "question is" "questions are"}} waiting for a batch — it is made when full, or around {{datetime .BatchAt}}.</p>{{end}}
-{{if .Answered}}<p class="muted small">Recently answered: {{range $i, $b := .Answered}}{{if $i}}, {{end}}<a href="/ui/batch/{{$b.ID}}">#{{$b.ID}}</a>{{end}}</p>{{end}}
 
-<h2 id="insights">Insights</h2>
-{{range .Insights}}
-<div class="card kind-{{.Kind}}">
-  <div class="row">
-    <b>{{.Title}}</b>
-    <form method="post" action="/ui/insight/{{.ID}}/dismiss"><button class="ghost" title="Dismiss">Dismiss</button></form>
+{{if $s}}{{$t := $s.D.Totals}}
+<div class="kpis">
+  <div class="kpi hero">
+    <div class="label">Spent this month {{with $s.Change}}{{if .Text}}<span class="pill {{.Class}}" data-tip="{{.Title}}">{{.Text}}</span>{{end}}{{end}}</div>
+    <div class="value num">{{kzt $t.Spend}}</div>
+    <div class="note">{{if $s.HasPrev}}vs the same days of {{$s.PrevTitle}}{{else}}purchases, cash and transfers counted as spending{{end}}</div>
   </div>
-  <div>{{.Body}}</div>
-  <div class="muted small">{{datetime .CreatedAt}}</div>
+  <div class="kpi"><div class="label">Per day</div><div class="value num">{{kzt $s.D.PerDay}}</div><div class="note">{{$s.Month.Days}} days</div></div>
+  {{if $s.Pace}}<div class="kpi"><div class="label">On pace for</div><div class="value num">{{kzt $s.Pace}}</div><div class="note">by the end of the month</div></div>
+  {{else}}<div class="kpi"><div class="label">Purchases</div><div class="value num">{{$t.PurchaseCount}}</div><div class="note">average check {{kzt $t.AvgCheck}}</div></div>{{end}}
+  <div class="kpi"><div class="label">Uncategorized</div><div class="value num">{{kzt $t.Uncategorized}}</div><div class="note">{{if $t.Uncategorized}}<a href="{{link "/ui/operations" "cat" "Uncategorized" "period" $s.Month.Key}}">review</a>{{else}}all sorted{{end}}</div></div>
+</div>
+
+<div class="grid g3" style="margin-top: 14px">
+  <div class="card">
+    <div class="card-head"><h3>Day by day</h3><a class="link" href="{{link "/ui/operations" "period" $s.Month.Key}}">operations →</a></div>
+    {{template "cols" (cols $s.D.Trend "day" "" "Spending by day" false)}}
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Top categories</h3><a class="link" href="/ui/categories">all →</a></div>
+    {{if $s.D.Categories}}
+    <div class="bars">
+      {{range $i, $c := $s.D.Categories}}{{if lt $i 6}}
+      <a class="bar" style="grid-template-columns: minmax(0, 1fr) auto" href="{{link "/ui/operations" "cat" $c.Label "period" $s.Month.Key}}" data-tip="{{$c.Label}} · {{kzt $c.Value}} · {{pct $c.Share}} · {{$c.Sub}}">
+        <div><div class="name">{{$c.Label}}</div><div class="track" style="margin-top: 5px"><div class="fill" style="width: {{width $c.Pct}}"></div></div></div>
+        <div class="val">{{compact $c.Value}}</div>
+      </a>{{end}}{{end}}
+    </div>
+    {{else}}<div class="empty small">No spending this month yet.</div>{{end}}
+  </div>
+</div>
+
+<div class="grid g2" style="margin-top: 14px">
+  <div class="card">
+    <div class="card-head"><h3>Recent operations</h3><a class="link" href="{{link "/ui/operations" "type" "all"}}">all →</a></div>
+    <div class="ops" style="border: 0; box-shadow: none; margin: -6px -14px">
+      {{range $s.Recent}}{{template "op" (dict "Op" . "Type" "all")}}{{end}}
+    </div>
+  </div>
+  <div class="card" id="insights">
+    <div class="card-head"><h3>Insights</h3><span class="muted tiny">found in the background</span></div>
+    {{range $i, $in := .Insights}}{{if eq $i 6}}<details class="more"><summary>{{subi (len $.Insights) 6}} more</summary><div style="margin-top: 14px">{{end}}{{with $in}}
+    <div class="insight k-{{.Kind}}">
+      <span class="ic">{{template "icon" "spark"}}</span>
+      <div><b>{{.Title}}</b><p>{{.Body}}</p><div class="muted tiny" style="margin-top: 4px">{{datetime .CreatedAt}}</div></div>
+      <form method="post" action="/ui/insight/{{.ID}}/dismiss"><button class="btn ghost sm" title="Dismiss" aria-label="Dismiss">{{template "icon" "x"}}</button></form>
+    </div>{{end}}{{if and (gt (len $.Insights) 6) (last $i (len $.Insights))}}</div></details>{{end}}
+    {{else}}
+    <div class="empty small">{{template "icon" "spark"}}<div>No insights yet. They appear after the analysis runs: subscriptions, price increases, unusual spending.</div></div>
+    {{end}}
+  </div>
 </div>
 {{else}}
-<div class="card muted">No insights yet — upload a statement and the analysis starts by itself.</div>
+  {{if .Insights}}<div class="card" id="insights">{{range .Insights}}<div class="insight k-{{.Kind}}"><span class="ic">{{template "icon" "spark"}}</span><div><b>{{.Title}}</b><p>{{.Body}}</p></div><span></span></div>{{end}}</div>{{end}}
 {{end}}
 
-<h2>Upload a statement</h2>
-<form id="upload" class="card drop" method="post" action="/ui/import" enctype="multipart/form-data">
-  <p class="muted small" style="margin-top:0">Kaspi Gold PDF: Kaspi.kz app → My Bank → Kaspi Gold → Statement, up to one year. Uploading again duplicates nothing.</p>
+{{if or .Waiting .Answered}}
+<p class="muted small" style="margin-top: 14px">
+  {{if .Waiting}}{{.Waiting}} more {{plural .Waiting "question is" "questions are"}} waiting for a batch — it is made when full, or around {{datetime .BatchAt}}.{{end}}
+  {{if .Answered}}Recently answered: {{range $i, $b := .Answered}}{{if $i}}, {{end}}<a href="/ui/batch/{{$b.ID}}">#{{$b.ID}}</a>{{end}}.{{end}}
+</p>
+{{end}}
+
+<h2 class="section" id="upload">Upload a statement</h2>
+<form id="upload-form" class="drop" method="post" action="/ui/import" enctype="multipart/form-data">
+  <span class="ic">{{template "icon" "upload"}}</span>
+  <div style="flex: 1; min-width: 220px">
+    <b>Kaspi Gold PDF statement</b>
+    <div class="muted small">Kaspi.kz → My Bank → Kaspi Gold → Statement, up to one year. Uploading the same period again duplicates nothing.</div>
+    <div id="upload-status" class="muted small" style="margin-top: 4px">The upload starts as soon as you pick a file<span class="desktop-only"> — or drop it here</span>.</div>
+  </div>
   <label class="btn big" for="pdf">Choose PDF</label>
   <input id="pdf" class="hidden-input" type="file" name="pdf" accept=".pdf,application/pdf">
-  <span id="upload-status" class="muted small">upload starts right after you pick a file<span class="desktop-only"> · or drop it here</span></span>
-  <noscript><button>Upload</button></noscript>
+  <noscript><button class="btn">Upload</button></noscript>
 </form>
 <script>
 (() => {
-  const form = document.getElementById('upload');
+  const form = document.getElementById('upload-form');
   const input = document.getElementById('pdf');
   const status = document.getElementById('upload-status');
   input.addEventListener('change', () => {
@@ -62,4 +115,4 @@
   });
 })();
 </script>
-{{template "foot"}}
+{{template "foot" .}}

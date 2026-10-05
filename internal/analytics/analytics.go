@@ -149,9 +149,12 @@ type Bar struct {
 	Sum   int64 // for check sizes: the sum of purchases in the bucket (Value is their count)
 	Pct   float64
 	Share float64 // share of the period's spending, %
+	// From and To bound the column in time (months and trend), for drill-down links.
+	From, To time.Time
 }
 
 type Merchant struct {
+	Key   string // normalized name, CashKey for cash, empty when unnamed
 	Name  string
 	Count int64
 	Total int64
@@ -170,6 +173,7 @@ type Day struct {
 }
 
 type Purchase struct {
+	Key      string // normalized merchant name
 	Date     time.Time
 	Merchant string
 	Amount   int64
@@ -182,7 +186,9 @@ type Dashboard struct {
 	Totals     Totals
 	PerDay     int64 // average per day over the period
 	Months     []Bar
-	Weekdays   []Bar // by total, descending
+	Trend      []Bar  // by day for short periods, by week for longer ones
+	TrendUnit  string // "day" or "week"
+	Weekdays   []Bar  // by total, descending
 	Categories []Bar
 	Merchants  []Merchant
 	TopDays    []Day
@@ -242,6 +248,7 @@ func Build(all []store.LedgerRow, p Period, exclude []string) Dashboard {
 	rows := spendInPeriod(all, p, exclude)
 	d.totals(all, rows)
 	d.months(rows)
+	d.trend(rows)
 	d.weekdays(rows)
 	d.categories(rows)
 	d.merchants(rows)
@@ -267,7 +274,7 @@ func (d *Dashboard) invariants() []string {
 	for _, c := range []struct {
 		name string
 		bars []Bar
-	}{{"month", d.Months}, {"weekday", d.Weekdays}, {"category", d.Categories}} {
+	}{{"month", d.Months}, {"trend", d.Trend}, {"weekday", d.Weekdays}, {"category", d.Categories}} {
 		if s := sum(c.bars); s != d.Totals.Spend {
 			out = append(out, fmt.Sprintf("sum by %s %d does not equal the total %d", c.name, s, d.Totals.Spend))
 		}
@@ -338,7 +345,8 @@ func (d *Dashboard) months(rows []store.LedgerRow) {
 		if m.Before(d.Period.From) || m.AddDate(0, 1, 0).After(d.Period.To) {
 			sub += " · partial month"
 		}
-		d.Months = append(d.Months, Bar{Label: shortMonth(m), Sub: sub, Value: a.total, Count: a.n})
+		d.Months = append(d.Months, Bar{Label: shortMonth(m), Sub: sub, Value: a.total, Count: a.n,
+			From: m, To: m.AddDate(0, 1, 0)})
 	}
 	scale(d.Months, d.Totals.Spend)
 }
@@ -430,7 +438,7 @@ func (d *Dashboard) merchants(rows []store.LedgerRow) {
 		key, name := r.MerchantNorm, display(r.Merchant)
 		switch {
 		case r.Kind == cash:
-			key, name = "#cash", CashMerchant
+			key, name = CashKey, CashMerchant
 		case key == "":
 			name = "Unnamed"
 		}
@@ -439,7 +447,7 @@ func (d *Dashboard) merchants(rows []store.LedgerRow) {
 			a = &agg{name: name}
 			byKey[key] = a
 			keys = append(keys, key)
-		} else if key != "#cash" && key != "" && shorter(name, a.name) {
+		} else if key != CashKey && key != "" && shorter(name, a.name) {
 			a.name = name
 		}
 		a.total += r.Amount
@@ -463,7 +471,7 @@ func (d *Dashboard) merchants(rows []store.LedgerRow) {
 	}
 	for _, k := range keys {
 		a := byKey[k]
-		m := Merchant{Name: a.name, Count: a.n, Total: a.total}
+		m := Merchant{Key: k, Name: a.name, Count: a.n, Total: a.total}
 		if a.n > 0 {
 			m.Avg = a.total / a.n
 		}
@@ -575,7 +583,7 @@ func (d *Dashboard) biggest(rows []store.LedgerRow) {
 		if len(r.Categories) > 0 {
 			cat = r.Categories[0]
 		}
-		d.Biggest = append(d.Biggest, Purchase{Date: r.At, Merchant: display(r.Merchant), Amount: r.Amount, Category: cat})
+		d.Biggest = append(d.Biggest, Purchase{Key: r.MerchantNorm, Date: r.At, Merchant: display(r.Merchant), Amount: r.Amount, Category: cat})
 	}
 }
 

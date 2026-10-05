@@ -1,31 +1,65 @@
-{{template "head" "Question batch"}}
-<h1>Batch #{{.ID}}</h1>
-<p class="muted">Pick a category for each merchant — their statement purchases get categorized, and future Wallet payments are categorized automatically.
-Leave "later" if you do not remember: the merchant comes back in the next batch.</p>
-{{if .Answered}}<div class="flash">This batch is already answered.</div>{{end}}
-
-<form method="post">
-{{$cats := .Categories}}
-{{range $i, $it := .Items}}
-<div class="card item">
+{{template "head" .Page}}
+<div class="page-head">
   <div>
-    <b>{{merchant $it.Display}}</b> {{if ne $it.Status "open"}}<span class="badge">{{if eq $it.Status "ignored"}}not spending{{else}}answered{{end}}</span>{{end}}
-    <div class="muted small">{{$it.Count}} purchases · <span class="num">{{money $it.TotalMinor $it.Currency}}</span> · {{date $it.First}}{{if ne (date $it.First) (date $it.Last)}} – {{date $it.Last}}{{end}}</div>
-    <ul class="samples">{{range $it.Samples}}<li><span class="num">{{money .AmountMinor .Currency}}</span> · {{date .OccurredAt}}{{with .Kind}} · {{kind .}}{{end}}</li>{{end}}</ul>
+    <h1>Batch #{{.ID}}</h1>
+    <div class="sub">{{len .Items}} {{plural (len .Items) "merchant" "merchants"}} · pick a category once — past purchases get it, future ones follow automatically</div>
   </div>
-  <div class="fields">
+  <div class="actions"><a class="btn ghost sm" href="/ui">{{template "icon" "left"}}Back</a></div>
+</div>
+{{if .Answered}}<div class="flash">{{template "icon" "check"}}<div>This batch is already answered.</div></div>{{end}}
+
+<form method="post" id="batch">
+{{$cats := .Categories}}
+<div class="ops">
+{{range $i, $it := .Items}}
+<div class="op" style="grid-template-columns: 36px minmax(0, 1fr) minmax(220px, 300px); align-items: start; padding: 14px 16px">
+  <span class="ava" style="--h: {{hue $it.Display}}" aria-hidden="true">{{initial (merchant $it.Display)}}</span>
+  <div class="op-main">
+    <span class="op-title">{{merchant $it.Display}}</span>
+    <div class="op-meta">
+      <b class="num" style="color: var(--ink)">{{money $it.TotalMinor $it.Currency}}</b>
+      <span>· {{$it.Count}} {{plural $it.Count "purchase" "purchases"}}</span>
+      <span>· {{date $it.First}}{{if ne (date $it.First) (date $it.Last)}} – {{date $it.Last}}{{end}}</span>
+      {{if ne $it.Status "open"}}<span class="tag">{{if eq $it.Status "ignored"}}not spending{{else}}answered{{end}}</span>{{end}}
+    </div>
+    <div class="op-meta" style="margin-top: 6px">{{range $it.Samples}}<span class="tag">{{money .AmountMinor .Currency}} · {{date .OccurredAt}}{{with .Kind}}{{if not (purchase .)}} · {{kind .}}{{end}}{{end}}</span>{{end}}</div>
+  </div>
+  <div style="display: grid; gap: 6px">
     <input type="hidden" name="norm_{{$i}}" value="{{$it.Norm}}">
-    <select name="cat_{{$i}}" aria-label="Category for {{$it.Display}}" {{if ne $it.Status "open"}}disabled{{end}}>
-      <option value="">— later —</option>
-      {{range $cats}}<option value="{{.ID}}" {{if eq .ID $it.GuessCategoryID}}selected{{end}}>{{.Name}}{{if eq .ID $it.GuessCategoryID}} ★{{end}}</option>{{end}}
+    <select name="cat_{{$i}}" aria-label="Category for {{$it.Display}}" {{if ne $it.Status "open"}}disabled{{end}} data-pick>
+      <option value="">Later — ask again</option>
+      {{range $cats}}<option value="{{.ID}}" {{if eq .ID $it.GuessCategoryID}}selected{{end}}>{{.Name}}{{if eq .ID $it.GuessCategoryID}}  ★ guess{{end}}</option>{{end}}
       <option value="ignore">Not spending / skip</option>
     </select>
-    <input type="text" name="new_{{$i}}" placeholder="or a new category" maxlength="40" {{if ne $it.Status "open"}}disabled{{end}}>
-    <input type="text" name="note_{{$i}}" placeholder="what is it (optional)" value="{{$it.Answer}}" maxlength="200" {{if ne $it.Status "open"}}disabled{{end}}>
+    <details class="more" style="margin: 0"><summary style="margin: 0">new category or a note</summary>
+      <div style="display: grid; gap: 6px; margin-top: 6px">
+        <input type="text" name="new_{{$i}}" placeholder="New category" maxlength="40" {{if ne $it.Status "open"}}disabled{{end}} aria-label="New category for {{$it.Display}}">
+        <input type="text" name="note_{{$i}}" placeholder="What is it (optional)" value="{{$it.Answer}}" maxlength="200" {{if ne $it.Status "open"}}disabled{{end}} aria-label="Note for {{$it.Display}}">
+      </div>
+    </details>
   </div>
 </div>
 {{end}}
-{{if not .Answered}}<div class="sticky"><button>Send batch</button> <a href="/ui" class="muted small">back</a></div>{{end}}
+</div>
+{{if not .Answered}}
+<div style="position: sticky; bottom: 0; padding: 14px 0; background: linear-gradient(transparent, var(--bg) 35%); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px">
+  <button class="btn big">{{template "icon" "check"}}Save answers</button>
+  <span class="muted small" id="picked"></span>
+</div>
+{{end}}
 </form>
-<p class="muted small">★ — the local model's guess.</p>
-{{template "foot"}}
+<p class="muted small">★ — the local model's guess, already selected. “Later” keeps the merchant for the next batch.</p>
+<script>
+(() => {
+  const sels = [...document.querySelectorAll('select[data-pick]:not([disabled])')];
+  const out = document.getElementById('picked');
+  if (!out) return;
+  const paint = () => {
+    const n = sels.filter(s => s.value !== '').length;
+    out.textContent = n + ' of ' + sels.length + ' answered' + (n < sels.length ? ' · the rest come back later' : '');
+  };
+  sels.forEach(s => s.addEventListener('change', paint));
+  paint();
+})();
+</script>
+{{template "foot" .}}

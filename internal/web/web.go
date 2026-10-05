@@ -83,6 +83,65 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 		"pct":      func(f float64) string { return pctString(f) },
 		"width":    func(f float64) template.CSS { return template.CSS(fmt.Sprintf("%.2f%%", f)) },
 		"wday":     func(t time.Time) string { return weekdayShort[t.Weekday()] },
+		"link":     link,
+		"now":      func() time.Time { return s.now().In(loc) },
+		"ymd":      func(t time.Time) string { return t.Format("2006-01-02") },
+		"lastDay":  func(t time.Time) string { return t.AddDate(0, 0, -1).Format("2006-01-02") },
+		"hm":       func(t time.Time) string { return t.Format("15:04") },
+		"dayTitle": dayTitle,
+		"chg":      func(c analytics.Change) change { return changeOf(c) },
+		"cmp":      analytics.Compare,
+		"abs": func(m int64) int64 {
+			if m < 0 {
+				return -m
+			}
+			return m
+		},
+		"initial": func(s string) string {
+			for _, r := range s {
+				return strings.ToUpper(string(r))
+			}
+			return "·"
+		},
+		"hue": func(s string) int {
+			h := 0
+			for _, r := range s {
+				h = (h*31 + int(r)) % 360
+			}
+			return h
+		},
+		"join": strings.Join,
+		"dict": func(kv ...any) map[string]any {
+			m := map[string]any{}
+			for i := 0; i+1 < len(kv); i += 2 {
+				m[kv[i].(string)] = kv[i+1]
+			}
+			return m
+		},
+		"purchase": func(k string) bool { return k == kaspi.Purchase },
+		"cols":     cols,
+		"subi":     func(a, b int) int { return a - b },
+		"add":      func(a, b int) int { return a + b },
+		"title": func(s string) string {
+			if s == "" {
+				return s
+			}
+			return strings.ToUpper(s[:1]) + s[1:]
+		},
+		"avg": func(total int64, n int) int64 {
+			if n == 0 {
+				return 0
+			}
+			return total / int64(n)
+		},
+		"hasTime": func(t time.Time) bool { return t.Hour() != 0 || t.Minute() != 0 },
+		"istr":    func(n int64) string { return strconv.FormatInt(n, 10) },
+		"bool1": func(b bool) string {
+			if b {
+				return "1"
+			}
+			return ""
+		},
 	}).ParseFS(templates, "templates/*.html"))
 	return s
 }
@@ -98,6 +157,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	ui := http.NewServeMux()
 	ui.HandleFunc("GET /ui", s.index)
 	ui.HandleFunc("GET /ui/analytics", s.analytics)
+	ui.HandleFunc("GET /ui/operations", s.operations)
+	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
+	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
+	ui.HandleFunc("GET /ui/categories", s.categories)
+	ui.HandleFunc("POST /ui/categories", s.categoryAction)
 	ui.HandleFunc("POST /ui/savings", s.savings)
 	ui.HandleFunc("GET /ui/transfers", s.transfers)
 	if s.settings != nil {
@@ -148,7 +212,9 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 type indexData struct {
-	ModelHint string // the model is not ready — hint to open the settings
+	Page
+	Summary   *homeSummary // nil — no data yet
+	ModelHint string       // the model is not ready — hint to open the settings
 	Open      []store.Batch
 	Answered  []store.Batch
 	Insights  []store.Insight
@@ -181,10 +247,15 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	d.Waiting, d.BatchAt = n, oldest.Add(s.batchMaxAge)
 	d.Flash = r.URL.Query().Get("msg")
 	d.ModelHint = s.modelHint(ctx)
-	s.render(w, "index.html", d)
+	if d.Summary, err = s.homeSummary(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.show(w, r, "index.html", "Home", "home", &d)
 }
 
 type batchData struct {
+	Page
 	ID         int64
 	Items      []store.BatchItem
 	Categories []store.Category
@@ -217,7 +288,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 			answered = false
 		}
 	}
-	s.render(w, "batch.html", batchData{ID: id, Items: items, Categories: cats, Answered: answered})
+	s.show(w, r, "batch.html", fmt.Sprintf("Batch #%d", id), "home", &batchData{ID: id, Items: items, Categories: cats, Answered: answered})
 }
 
 // answer applies a whole batch. Fields of row i: norm_i, cat_i ("", "ignore" or a category id),
@@ -284,6 +355,7 @@ func (s *Server) ensureCategory(ctx context.Context, name string) (int64, error)
 }
 
 type importData struct {
+	Page
 	File   string
 	Result importer.Result
 	From   time.Time
@@ -295,18 +367,18 @@ func (s *Server) importPDF(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	f, hdr, err := r.FormFile("pdf")
 	if err != nil {
-		s.render(w, "import.html", importData{Err: "Choose a PDF statement (up to 20 MB)."})
+		s.show(w, r, "import.html", "Statement import", "home", &importData{Err: "Choose a PDF statement (up to 20 MB)."})
 		return
 	}
 	defer f.Close()
 	b, err := io.ReadAll(f)
 	if err != nil {
-		s.render(w, "import.html", importData{Err: "Could not read the file."})
+		s.show(w, r, "import.html", "Statement import", "home", &importData{Err: "Could not read the file."})
 		return
 	}
 	st, err := statement.ParseKaspiBytes(b, s.loc)
 	if err != nil {
-		s.render(w, "import.html", importData{File: hdr.Filename, Err: "Could not parse the statement: " + err.Error()})
+		s.show(w, r, "import.html", "Statement import", "home", &importData{File: hdr.Filename, Err: "Could not parse the statement: " + err.Error()})
 		return
 	}
 	res, err := importer.Import(r.Context(), s.st, st, s.now())
@@ -318,7 +390,7 @@ func (s *Server) importPDF(w http.ResponseWriter, r *http.Request) {
 	if s.kick != nil {
 		s.kick.Kick()
 	}
-	s.render(w, "import.html", importData{File: hdr.Filename, Result: res, From: st.From, To: st.To})
+	s.show(w, r, "import.html", "Statement import", "home", &importData{File: hdr.Filename, Result: res, From: st.From, To: st.To})
 }
 
 func (s *Server) dismiss(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +416,15 @@ func plural(n int, one, many string) string {
 }
 
 type analyticsData struct {
+	Page
+	Prev         analytics.Dashboard
+	HasPrev      bool
+	PrevPeriod   analytics.Period
+	PrevCat      map[string]int64
+	Older        string // keys of the neighbouring months for the arrows
+	Newer        string
+	Heat         *heatmap
+	RecOK        int
 	Empty        bool
 	Source       string           // where the data came from: ClickHouse or SQLite
 	Fallback     bool             // ClickHouse is configured but unreachable — SQLite data is shown
@@ -367,7 +448,7 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 	first, last, ok := analytics.Bounds(rows)
 	if !ok {
 		data.Empty = true
-		s.render(w, "analytics.html", data)
+		s.show(w, r, "analytics.html", "Analytics", "analytics", &data)
 		return
 	}
 	data.Periods = analytics.Periods(first, last)
@@ -390,18 +471,43 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 		exclude = data.SavingsNames
 	}
 	data.D = analytics.Build(rows, data.Current, exclude)
+	if data.Current.Key != "all" {
+		data.PrevPeriod = data.Current.Prev()
+		if data.HasPrev = !data.PrevPeriod.From.Before(first); data.HasPrev {
+			data.Prev = analytics.Build(rows, data.PrevPeriod, exclude)
+			data.PrevCat = map[string]int64{}
+			for _, c := range data.Prev.Categories {
+				data.PrevCat[c.Label] = c.Value
+			}
+		}
+	}
+	for i, p := range data.Periods {
+		if p.Key == data.Current.Key && len(p.Key) == 7 {
+			if i+1 < len(data.Periods) {
+				data.Older = data.Periods[i+1].Key
+			}
+			if i > 0 && len(data.Periods[i-1].Key) == 7 {
+				data.Newer = data.Periods[i-1].Key
+			}
+		}
+	}
+	data.Heat = heat(rows, data.Current, exclude)
 	stmts, err := s.st.Statements(ctx, s.loc)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	for _, si := range stmts {
-		data.Recs = append(data.Recs, analytics.Reconcile(rows, si))
+		rec := analytics.Reconcile(rows, si)
+		data.Recs = append(data.Recs, rec)
+		if rec.OK {
+			data.RecOK++
+		}
 	}
 	if len(data.D.Problems) > 0 {
 		s.log.Error("web: analytics invariants broken", "problems", data.D.Problems)
 	}
-	s.render(w, "analytics.html", data)
+	s.show(w, r, "analytics.html", "Analytics", "analytics", &data)
 }
 
 // ledger returns operations for analytics: from ClickHouse when configured, otherwise (or when
@@ -481,6 +587,7 @@ func (s *Server) savings(w http.ResponseWriter, r *http.Request) {
 }
 
 type transfersData struct {
+	Page
 	Categories []store.Category
 	Flash      string
 	Query      string
@@ -516,12 +623,12 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.Flash = r.URL.Query().Get("msg")
-		s.render(w, "transfers.html", d)
+		s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
 		return
 	}
-	terms := strings.Fields(fold(d.Query))
+	terms := strings.Fields(analytics.Fold(d.Query))
 	for _, c := range all {
-		name := fold(c.Name)
+		name := analytics.Fold(c.Name)
 		match := true
 		for _, t := range terms {
 			if !strings.Contains(name, t) {
@@ -536,16 +643,8 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	s.render(w, "transfers.html", d)
+	s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
 }
-
-// fold prepares a name for search: lower case, Kazakh letters mapped to Russian ones
-// ("Әлия" is found by "алия"), ё to е, dots to spaces.
-var foldReplacer = strings.NewReplacer(
-	"ә", "а", "ə", "а", "ғ", "г", "қ", "к", "ң", "н", "ө", "о", "ұ", "у", "ү", "у", "һ", "х", "і", "и", "ё", "е", ".", " ",
-)
-
-func fold(s string) string { return foldReplacer.Replace(strings.ToLower(s)) }
 
 // transferCategory makes transfers to a person spending in a category or turns them back into non-spending.
 func (s *Server) transferCategory(w http.ResponseWriter, r *http.Request) {
@@ -611,4 +710,18 @@ func (s *Server) modelHint(ctx context.Context) string {
 		return "Model " + s.settings.Model.Model() + " is not downloaded yet."
 	}
 	return ""
+}
+
+// dayTitle is a day header in lists: "Today", "Yesterday" or "Mon, 6 Oct".
+func dayTitle(t, now time.Time) string {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, t.Location())
+	switch d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()); {
+	case d.Equal(today):
+		return "Today"
+	case d.Equal(today.AddDate(0, 0, -1)):
+		return "Yesterday"
+	case d.Year() == today.Year():
+		return d.Format("Mon, 2 Jan")
+	}
+	return t.Format("Mon, 2 Jan 2006")
 }
