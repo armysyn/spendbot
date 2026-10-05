@@ -10,6 +10,7 @@
     <div class="sub">{{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}} · {{.Current.Days}} {{plural .Current.Days "day" "days"}}{{if .HasPrev}} · compared with {{date .PrevPeriod.From}} – {{date (.PrevPeriod.To.AddDate 0 0 -1)}}{{end}}</div>
   </div>
   <div class="actions">
+    {{template "datepicker" .Picker}}
     {{if .Older}}<a class="btn secondary sm" href="{{link "/ui/analytics" "period" .Older "nosave" $ns}}" aria-label="Previous month">{{template "icon" "left"}}</a>{{end}}
     {{if .Newer}}<a class="btn secondary sm" href="{{link "/ui/analytics" "period" .Newer "nosave" $ns}}" aria-label="Next month">{{template "icon" "right"}}</a>{{end}}
     <a class="btn secondary sm" href="{{link "/ui/operations" "period" .Current.Key "nosave" $ns}}">{{template "icon" "ops"}}Operations</a>

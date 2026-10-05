@@ -34,6 +34,7 @@ type incomeData struct {
 	ThisMonth   string // 'YYYY-MM', a default for the forms
 	State       string
 	ShownMonths []analytics.MonthFlow // newest first, for the table
+	Picker      picker
 }
 
 func (s *Server) income(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +89,7 @@ func (s *Server) income(w http.ResponseWriter, r *http.Request) {
 	if custom {
 		d.From, d.To = q.Get("from"), q.Get("to")
 	}
+	d.Picker = newPicker("/ui/income", q, d.Current, custom, rows)
 	var exclude []string
 	if !d.WithSavings {
 		if exclude, err = s.st.SavingsNames(ctx); err != nil {

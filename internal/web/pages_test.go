@@ -415,3 +415,40 @@ func TestIncomePage(t *testing.T) {
 		t.Errorf("delete: %+v", ps)
 	}
 }
+
+// A day or a range picked in the calendar opens on every page with a period.
+func TestPickedRange(t *testing.T) {
+	h, st, _ := setup(t)
+	seedOps(t, st)
+	for _, p := range []string{"/ui/analytics?from=2026-08-02&to=2026-08-04", "/ui/analytics?from=2026-08-03&to=2026-08-03&nosave=1",
+		"/ui/operations?from=2026-08-02&to=2026-08-04", "/ui/categories?from=2026-08-01&to=2026-08-31", "/ui/income?from=2026-08-01&to=2026-09-30",
+		"/ui/transfers?from=2026-08-01&to=2026-08-31", "/ui/transfers?name=Adam+S.&from=2026-08-01&to=2026-08-31"} {
+		b := do(h, "GET", p, nil, "", true).Body.String()
+		if !strings.HasSuffix(strings.TrimSpace(b), "</html>") || !strings.Contains(b, `class="dp"`) {
+			t.Errorf("%s: cut short or no calendar", p)
+		}
+	}
+	// 2–4 Aug: Magnum 4,500 and Magnum #12 1,200 and the 20,000 withdrawal
+	b := do(h, "GET", "/ui/analytics?from=2026-08-02&to=2026-08-04", nil, "", true).Body.String()
+	if !strings.Contains(b, "2 Aug 2026 – 4 Aug 2026") || !strings.Contains(b, "25,700") {
+		t.Errorf("custom range on analytics:\n%s", tail(b))
+	}
+	// a reversed or broken range falls back to the default period
+	if b := do(h, "GET", "/ui/analytics?from=2026-08-04&to=2026-08-02", nil, "", true).Body.String(); !strings.Contains(b, "<h1>12 months</h1>") {
+		t.Error("reversed range")
+	}
+}
+
+func TestRangeLabel(t *testing.T) {
+	d := func(y int, m time.Month, day int) time.Time { return time.Date(y, m, day, 0, 0, 0, 0, almaty) }
+	for want, r := range map[string][2]time.Time{
+		"8 Sep 2026":               {d(2026, 9, 8), d(2026, 9, 8)},
+		"8 – 21 Sep 2026":          {d(2026, 9, 8), d(2026, 9, 21)},
+		"28 Aug – 3 Sep 2026":      {d(2026, 8, 28), d(2026, 9, 3)},
+		"28 Dec 2025 – 3 Jan 2026": {d(2025, 12, 28), d(2026, 1, 3)},
+	} {
+		if got := rangeLabel(r[0], r[1]); got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
+	}
+}
