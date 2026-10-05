@@ -501,23 +501,52 @@ func displayName(raw string) string {
 
 type categoryRow struct {
 	store.Category
-	Year, All analytics.CategoryUsage
-	Rules     int
-	Pct       float64
+	Stat   analytics.CategoryStat
+	Change change
+	Rules  int
 }
 
 type categoriesData struct {
 	Page
-	Flash    string
-	Active   []categoryRow
-	Archived []categoryRow
-	YearFrom time.Time
-	Options  []store.Category
+	Flash      string
+	Empty      bool
+	Rows       []categoryRow
+	Archived   []categoryRow
+	Options    []store.Category
+	Periods    []analytics.Period
+	Current    analytics.Period
+	PrevPeriod analytics.Period
+	HasPrev    bool
+	Custom     bool
+	From, To   string
+	Query      string
+	Min, Max   string
+	Savings    string // "" — all, "only", "none"
+	Unused     bool   // show categories without spending in the period
+	NoSavings  bool
+	Sort       string
+	Sorts      []struct{ Key, Title string }
+	Total      int64
+	Used       int // categories with spending
+	Top        *categoryRow
+	Grew       *categoryRow // the largest increase against the previous period
+	Fell       *categoryRow
+	TrendUnit  string
+	Ask        string
+	AI         bool
+	State      string
+}
+
+var categorySorts = []struct{ Key, Title string }{
+	{"", "Largest first"}, {"small", "Smallest first"}, {"grew", "Grew the most"}, {"fell", "Fell the most"},
+	{"count", "Most operations"}, {"avg", "Largest average"}, {"name", "By name"},
 }
 
 func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	d := &categoriesData{Flash: r.URL.Query().Get("msg")}
+	q := r.URL.Query()
+	d := &categoriesData{Flash: q.Get("msg"), Query: strings.TrimSpace(q.Get("q")), Savings: q.Get("savings"),
+		Unused: q.Get("unused") == "1", NoSavings: q.Get("nosave") == "1", Sort: q.Get("sort"), Ask: q.Get("ask"), AI: s.aiReady(), Sorts: categorySorts}
 	cats, err := s.st.AllCategories(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -533,38 +562,152 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	var year, all map[string]analytics.CategoryUsage
-	if first, last, ok := bounds(rows); ok {
-		ps := analytics.Periods(first, last)
-		for _, p := range ps {
-			switch p.Key {
-			case "12m":
-				year = analytics.UsageByCategory(rows, p)
-				d.YearFrom = p.From
-			case "all":
-				all = analytics.UsageByCategory(rows, p)
+	sq := cloneValues(q)
+	for _, k := range []string{"msg", "ask"} {
+		sq.Del(k)
+	}
+	d.State = sq.Encode()
+	var rep analytics.CategoryReport
+	first, last, ok := analytics.Bounds(rows)
+	if ok {
+		d.Periods = analytics.Periods(first, last)
+		if q.Get("period") == "" && q.Get("from") == "" {
+			q.Set("period", "12m")
+		}
+		f, custom := filterFrom(q, d.Periods, s.loc)
+		d.Current, d.Custom = f.Period, custom
+		if custom {
+			d.From, d.To = q.Get("from"), q.Get("to")
+		}
+		var exclude []string
+		if d.NoSavings {
+			if exclude, err = s.st.SavingsNames(ctx); err != nil {
+				s.fail(w, err)
+				return
 			}
 		}
+		if d.Current.Key != "all" {
+			d.PrevPeriod = d.Current.Prev()
+			d.HasPrev = !d.PrevPeriod.From.Before(first)
+		}
+		rep = analytics.Categories(rows, d.Current, d.PrevPeriod, d.HasPrev, exclude)
+		d.TrendUnit = rep.TrendUnit
+	} else {
+		d.Empty = true
 	}
-	var max int64
+	stats := map[string]analytics.CategoryStat{}
+	for _, st := range rep.Stats {
+		stats[st.Name] = st
+	}
+	min, max := int64(0), int64(0)
+	if v, ok := parseAmount(q.Get("min")); ok {
+		min, d.Min = int64(v*100+0.5), q.Get("min")
+	}
+	if v, ok := parseAmount(q.Get("max")); ok {
+		max, d.Max = int64(v*100+0.5), q.Get("max")
+	}
+	terms := strings.Fields(analytics.Fold(d.Query))
+	keep := func(name string, savings bool, st analytics.CategoryStat) bool {
+		for _, t := range terms {
+			if !strings.Contains(analytics.Fold(name), t) {
+				return false
+			}
+		}
+		switch {
+		case d.Savings == "only" && !savings, d.Savings == "none" && savings:
+			return false
+		case min > 0 && st.Total < min, max > 0 && st.Total > max:
+			return false
+		}
+		return true
+	}
+	seen := map[string]bool{}
 	for _, c := range cats {
-		row := categoryRow{Category: c, Year: year[c.Name], All: all[c.Name], Rules: rules[c.ID]}
-		if row.Year.Total > max {
-			max = row.Year.Total
+		st := stats[c.Name]
+		st.Name = c.Name
+		seen[c.Name] = true
+		row := categoryRow{Category: c, Stat: st, Rules: rules[c.ID]}
+		if d.HasPrev {
+			row.Change = changeOf(analytics.Compare(st.Total, st.Prev))
 		}
 		if c.Archived {
-			d.Archived = append(d.Archived, row)
-		} else {
-			d.Active = append(d.Active, row)
-			d.Options = append(d.Options, c)
+			if keep(c.Name, c.Savings, st) {
+				d.Archived = append(d.Archived, row)
+			}
+			continue
+		}
+		d.Options = append(d.Options, c)
+		if st.Total == 0 && !d.Unused {
+			continue
+		}
+		if keep(c.Name, c.Savings, st) {
+			d.Rows = append(d.Rows, row)
 		}
 	}
-	for i := range d.Active {
-		if max > 0 && d.Active[i].Year.Total > 0 {
-			d.Active[i].Pct = float64(d.Active[i].Year.Total) * 100 / float64(max)
+	// Cash and Uncategorized have no category behind them but are part of spending.
+	for _, st := range rep.Stats {
+		if seen[st.Name] || st.Total == 0 && !d.Unused {
+			continue
+		}
+		row := categoryRow{Category: store.Category{Name: st.Name}, Stat: st}
+		if d.HasPrev {
+			row.Change = changeOf(analytics.Compare(st.Total, st.Prev))
+		}
+		if keep(st.Name, false, st) {
+			d.Rows = append(d.Rows, row)
 		}
 	}
-	sort.SliceStable(d.Active, func(i, j int) bool { return d.Active[i].Year.Total > d.Active[j].Year.Total })
+	for _, row := range d.Rows {
+		d.Total += row.Stat.Total
+		if row.Stat.Total > 0 {
+			d.Used++
+		}
+	}
+	growth := func(r categoryRow) int64 { return r.Stat.Total - r.Stat.Prev }
+	sort.SliceStable(d.Rows, func(i, j int) bool {
+		a, b := d.Rows[i].Stat, d.Rows[j].Stat
+		growth := func(st analytics.CategoryStat) int64 { return st.Total - st.Prev }
+		switch d.Sort {
+		case "small":
+			if a.Total != b.Total {
+				return a.Total < b.Total
+			}
+		case "grew":
+			if growth(a) != growth(b) {
+				return growth(a) > growth(b)
+			}
+		case "fell":
+			if growth(a) != growth(b) {
+				return growth(a) < growth(b)
+			}
+		case "count":
+			if a.Count != b.Count {
+				return a.Count > b.Count
+			}
+		case "avg":
+			if a.Avg != b.Avg {
+				return a.Avg > b.Avg
+			}
+		case "name":
+			return a.Name < b.Name
+		}
+		if a.Total != b.Total {
+			return a.Total > b.Total
+		}
+		return a.Name < b.Name
+	})
+	for i := range d.Rows {
+		row := &d.Rows[i]
+		if d.Top == nil || row.Stat.Total > d.Top.Stat.Total {
+			d.Top = row
+		}
+		if d.HasPrev && growth(*row) > 0 && (d.Grew == nil || growth(*row) > growth(*d.Grew)) {
+			d.Grew = row
+		}
+		if d.HasPrev && growth(*row) < 0 && (d.Fell == nil || growth(*row) < growth(*d.Fell)) {
+			d.Fell = row
+		}
+	}
 	s.show(w, r, "categories.html", "Categories", "categories", d)
 }
 

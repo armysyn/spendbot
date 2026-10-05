@@ -25,10 +25,14 @@ local model through Ollama. Your data never leaves your computer unless you conn
   the period; sorting by total, count, balance or date.
 - **Requests in plain words** — "between 20k and 50k, largest first" on the operations page,
   "sent only once between 20k and 50k" or "who sent me the most" on the transfers page,
+  "what grew the most this year" on the categories page,
   become filters on top of the current ones. The local model (or the bot's model) only
   translates the words; it never sees the operations, and the program computes every number.
   Amounts and sorting words work without any model.
-- **Categories** — spending per category, add, rename, merge, archive, mark as savings.
+- **Categories** — per category over any period: spending, share, operations, average, change
+  against the previous period, a sparkline and top merchants; filters by name, spending range and
+  savings, unused ones on request, sorting by size, growth, fall, count, average or name;
+  add, rename, merge, archive and mark as savings.
 - **Background insights** — subscriptions and recurring payments, price increases, anomalies,
   double charges, growing categories, saving tips.
 - **Transfers** — search by recipient name, sent and received per person; transfers to a

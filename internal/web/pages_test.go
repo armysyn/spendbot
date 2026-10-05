@@ -341,3 +341,32 @@ func TestPeopleRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestCategoriesPage(t *testing.T) {
+	h, st, _ := setup(t)
+	seedOps(t, st)
+	for _, p := range []string{"/ui/categories", "/ui/categories?period=all&unused=1", "/ui/categories?period=2026-08&sort=grew",
+		"/ui/categories?q=groc&min=100&savings=none", "/ui/categories?from=2026-08-01&to=2026-09-30&sort=name"} {
+		b := do(h, "GET", p, nil, "", true).Body.String()
+		if !strings.HasSuffix(strings.TrimSpace(b), "</html>") {
+			t.Errorf("%s cut short:\n%s", p, tail(b))
+		}
+	}
+	all := do(h, "GET", "/ui/categories?period=all", nil, "", true).Body.String()
+	for _, want := range []string{"Groceries", "Cash", "Uncategorized", "1,500"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("categories page lacks %q", want)
+		}
+	}
+	if strings.Contains(all, "cat=Beauty") {
+		t.Error("unused categories are hidden by default")
+	}
+	if !strings.Contains(do(h, "GET", "/ui/categories?period=all&unused=1", nil, "", true).Body.String(), "cat=Beauty") {
+		t.Error("unused categories show with the switch")
+	}
+	w := post(h, "/ui/categories/ask", url.Values{"prompt": {"что выросло больше всего, без сбережений"}, "state": {"period=12m"}})
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	if loc.Path != "/ui/categories" || loc.Query().Get("sort") != "grew" || loc.Query().Get("savings") != "none" || loc.Query().Get("period") != "12m" {
+		t.Errorf("ask: %s", loc)
+	}
+}

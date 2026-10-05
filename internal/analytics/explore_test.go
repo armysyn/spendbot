@@ -214,3 +214,40 @@ func TestPeoplePerOperation(t *testing.T) {
 		t.Errorf("once: %+v", once.People)
 	}
 }
+
+// The categories page agrees with the analytics page: same totals and counts per category.
+func TestCategoriesMatchDashboard(t *testing.T) {
+	st := testStore(t)
+	seed(t, st)
+	rows := ledger(t, st)
+	p := Period{Key: "x", From: time.Date(2026, 9, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty)}
+	prev := Period{From: time.Date(2026, 8, 1, 0, 0, 0, 0, almaty), To: p.From}
+	for _, exclude := range [][]string{nil, {"Gifts"}} {
+		d, pd := Build(rows, p, exclude), Build(rows, prev, exclude)
+		rep := Categories(rows, p, prev, true, exclude)
+		if rep.Total != d.Totals.Spend {
+			t.Errorf("total %d, dashboard %d", rep.Total, d.Totals.Spend)
+		}
+		got := map[string]CategoryStat{}
+		for _, c := range rep.Stats {
+			got[c.Name] = c
+			var trend int64
+			for _, b := range c.Trend {
+				trend += b.Value
+			}
+			if trend != c.Total {
+				t.Errorf("%s: sparkline %d, total %d", c.Name, trend, c.Total)
+			}
+		}
+		for _, b := range d.Categories {
+			if g := got[b.Label]; g.Total != b.Value || g.Count != b.Count {
+				t.Errorf("exclude %v: %s %d (%d), dashboard %d (%d)", exclude, b.Label, g.Total, g.Count, b.Value, b.Count)
+			}
+		}
+		for _, b := range pd.Categories {
+			if got[b.Label].Prev != b.Value {
+				t.Errorf("%s: prev %d, dashboard %d", b.Label, got[b.Label].Prev, b.Value)
+			}
+		}
+	}
+}

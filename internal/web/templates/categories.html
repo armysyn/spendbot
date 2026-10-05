@@ -1,8 +1,9 @@
 {{template "head" .Page}}
+{{$st := .State}}{{$cur := .Current}}{{$hp := .HasPrev}}
 <div class="page-head">
   <div>
     <h1>Categories</h1>
-    <div class="sub">{{len .Active}} active{{if .Archived}} · {{len .Archived}} archived{{end}}{{if not .YearFrom.IsZero}} · spending since {{date .YearFrom}}{{end}}</div>
+    <div class="sub">{{if .Empty}}No spending yet{{else}}{{title .Current.Title}} · {{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}}{{if .HasPrev}} · compared with {{date .PrevPeriod.From}} – {{date (.PrevPeriod.To.AddDate 0 0 -1)}}{{end}}{{end}}</div>
   </div>
   <form class="actions" method="post" action="/ui/categories">
     <input type="hidden" name="action" value="add">
@@ -12,58 +13,123 @@
 </div>
 {{template "flash" .Flash}}
 
-{{$opts := .Options}}
-<div class="ops">
-  {{range .Active}}{{$c := .}}
+{{if not .Empty}}
+{{template "askbox" (dict "Action" "/ui/categories/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: what grew the most this year · over 100k in September · only savings · smallest first")}}
+
+<form class="toolbar" method="get" action="/ui/categories">
+  {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
+  {{if .Unused}}<input type="hidden" name="unused" value="1">{{end}}
+  <select name="period" aria-label="Period" onchange="if (this.form.from) { this.form.from.remove(); this.form.to.remove() } this.form.submit()">
+    {{if .Custom}}<option value="" selected>{{.Current.Title}}</option>{{end}}
+    {{range .Periods}}<option value="{{.Key}}" {{if and (not $.Custom) (eq .Key $cur.Key)}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <input type="search" name="q" value="{{.Query}}" placeholder="Category name" aria-label="Search" style="flex: 1; min-width: 150px">
+  <span class="range" title="Spending in the period"><input type="text" inputmode="decimal" name="min" value="{{.Min}}" placeholder="spent from ₸" aria-label="Spent from" size="9"><span class="muted">–</span><input type="text" inputmode="decimal" name="max" value="{{.Max}}" placeholder="to ₸" aria-label="Spent to" size="7"></span>
+  <select name="savings" aria-label="Savings" onchange="this.form.submit()">
+    <option value="">Savings and spending</option>
+    <option value="none" {{if eq .Savings "none"}}selected{{end}}>Without savings</option>
+    <option value="only" {{if eq .Savings "only"}}selected{{end}}>Savings only</option>
+  </select>
+  <select name="sort" aria-label="Sort" onchange="this.form.submit()">
+    {{range .Sorts}}<option value="{{.Key}}" {{if eq .Key $.Sort}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <a class="switch {{if .Unused}}on{{end}}" role="switch" aria-checked="{{if .Unused}}true{{else}}false{{end}}" href="{{swapAt "/ui/categories" $st "unused" (bool1 (not .Unused))}}"><span class="knob"></span>Show unused</a>
+  <button class="btn secondary sm">{{template "icon" "search"}}Apply</button>
+</form>
+{{if or .Query .Min .Max .Savings .Custom}}
+<div class="toolbar" style="margin-top: -6px">
+  <span class="muted small">Filters:</span>
+  {{if .Query}}<span class="chip">“{{.Query}}”<a href="{{swapAt "/ui/categories" $st "q" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Custom}}<span class="chip">{{.Current.Title}}<a href="{{swapAt "/ui/categories" $st "from" "" "to" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if or .Min .Max}}<span class="chip">spent {{if and .Min .Max}}{{.Min}} – {{.Max}} ₸{{else if .Min}}from {{.Min}} ₸{{else}}up to {{.Max}} ₸{{end}}<a href="{{swapAt "/ui/categories" $st "min" "" "max" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Savings}}<span class="chip">{{if eq .Savings "only"}}savings only{{else}}without savings{{end}}<a href="{{swapAt "/ui/categories" $st "savings" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  <a class="small muted" href="/ui/categories">clear all</a>
+</div>
+{{end}}
+
+<div class="kpis stats">
+  <div class="kpi"><div class="label">Spending in these categories</div><div class="value num">{{kzt .Total}}</div><div class="note">{{.Used}} of {{len .Options}} categories used</div></div>
+  {{with .Top}}<div class="kpi"><div class="label">Largest</div><div class="value" style="font-size: 18px">{{.Stat.Name}}</div><div class="note">{{kzt .Stat.Total}} · {{pct .Stat.Share}} of spending</div></div>{{end}}
+  {{with .Grew}}<div class="kpi"><div class="label">Grew the most</div><div class="value" style="font-size: 18px">{{.Stat.Name}}</div><div class="note bad">+{{kzt (sub .Stat.Total .Stat.Prev)}} · was {{kzt .Stat.Prev}}</div></div>{{end}}
+  {{with .Fell}}<div class="kpi"><div class="label">Fell the most</div><div class="value" style="font-size: 18px">{{.Stat.Name}}</div><div class="note good">−{{kzt (sub .Stat.Prev .Stat.Total)}} · was {{kzt .Stat.Prev}}</div></div>{{end}}
+</div>
+{{end}}
+
+{{$opts := .Options}}{{$unit := .TrendUnit}}
+{{if .Rows}}
+<div class="ops" style="margin-top: 14px">
+  {{range .Rows}}{{$c := .}}
   <div class="op cat-row">
-    <span class="ava" style="--h: {{hue .Name}}" aria-hidden="true">{{initial .Name}}</span>
+    <span class="ava" style="--h: {{hue .Stat.Name}}" aria-hidden="true">{{initial .Stat.Name}}</span>
     <div class="op-main">
-      <a class="op-title" href="{{link "/ui/operations" "cat" .Name "period" "12m"}}">{{.Name}}</a>
+      <a class="op-title" href="{{link "/ui/operations" "cat" .Stat.Name "period" $cur.Key}}">{{.Stat.Name}}</a>
       <div class="op-meta">
         {{if .Savings}}<span class="tag save">savings</span>{{end}}
-        <span>{{.Year.Count}} {{plural (int .Year.Count) "operation" "operations"}} in 12 months</span>
+        {{if .Stat.Pseudo}}<span class="tag">{{if eq .Stat.Name "Cash"}}cash withdrawals{{else}}needs a category{{end}}</span>{{end}}
+        {{if .Stat.Count}}<span>{{.Stat.Count}} {{plural (int .Stat.Count) "operation" "operations"}} · avg {{kzt .Stat.Avg}}</span>{{else}}<span>no spending</span>{{end}}
         {{if .Rules}}<span>· {{.Rules}} {{plural .Rules "merchant" "merchants"}} remembered</span>{{end}}
-        {{if ne .All.Total .Year.Total}}<span class="hide-narrow">· all time {{compact .All.Total}}</span>{{end}}
       </div>
+      {{if .Stat.Top}}
+      <details class="more" style="margin-top: 2px"><summary style="margin-top: 4px">top merchants</summary>
+        <div class="bars" style="margin-top: 6px; max-width: 520px">
+          {{range .Stat.Top}}
+          <a class="bar" href="{{link "/ui/operations" "m" .Key "cat" $c.Stat.Name "period" $cur.Key}}" style="grid-template-columns: minmax(90px, 40%) minmax(0, 1fr) auto">
+            <span class="name small">{{.Name}}</span>
+            <span class="track"><span class="fill" style="display: block; width: {{width .Share}}"></span></span>
+            <span class="val small">{{compact .Total}} <span class="muted">· {{pct .Share}}</span></span>
+          </a>
+          {{end}}
+        </div>
+      </details>
+      {{end}}
     </div>
-    <div class="hide-narrow"><div class="bar" style="grid-template-columns: 1fr; margin: 0; padding: 0"><span class="track"><span class="fill{{if le .Year.Total 0}} zero{{end}}" style="display: block; width: {{width .Pct}}"></span></span></div></div>
-    <div style="display: flex; align-items: center; gap: 4px">
-      <div class="op-amt">{{if .Year.Total}}{{kzt .Year.Total}}{{else}}<span class="muted">—</span>{{end}}</div>
+    <div class="spark hide-narrow" aria-label="Spending by {{$unit}}">
+      {{range .Stat.Trend}}<a class="sb{{if not .Value}} zero{{end}}" href="{{link "/ui/operations" "cat" $c.Stat.Name "from" (ymd .From) "to" (lastDay .To)}}" data-tip="{{$c.Stat.Name}} · {{.Label}} · {{kzt .Value}}"><span style="height: {{width .Pct}}"></span></a>{{end}}
+    </div>
+    <div style="display: flex; align-items: center; gap: 4px; justify-content: flex-end">
+      <div class="op-amt">{{if .Stat.Total}}{{kzt .Stat.Total}}{{else}}<span class="muted">—</span>{{end}}
+        <span class="full">{{if .Stat.Total}}{{pct .Stat.Share}}{{end}}{{with .Change}}{{if .Text}} <span class="pill {{.Class}}" style="font-size: 11px; padding: 0 6px" data-tip="{{.Title}}">{{.Text}}</span>{{end}}{{end}}</span>
+      </div>
+      {{if not .Stat.Pseudo}}
       <details class="edit">
-        <summary class="btn ghost sm" aria-label="Edit {{.Name}}" title="Edit">{{template "icon" "edit"}}</summary>
+        <summary class="btn ghost sm" aria-label="Edit {{.Stat.Name}}" title="Edit">{{template "icon" "edit"}}</summary>
         <div class="edit-pop">
           <form method="post" action="/ui/categories" style="display: grid; gap: 8px">
             <input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="{{.ID}}">
-            <div class="field"><label for="rn{{.ID}}">Rename</label><input id="rn{{.ID}}" type="text" name="name" value="{{.Name}}" maxlength="40"></div>
+            <div class="field"><label for="rn{{.ID}}">Rename</label><input id="rn{{.ID}}" type="text" name="name" value="{{.Category.Name}}" maxlength="40"></div>
             <div><button class="btn sm">Rename</button> <span class="muted tiny">an existing name merges the two</span></div>
           </form>
           <form method="post" action="/ui/categories" style="display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px">
             <input type="hidden" name="action" value="merge"><input type="hidden" name="id" value="{{.ID}}">
             <div class="field"><label for="mg{{.ID}}">Merge into</label>
               <select id="mg{{.ID}}" name="into" required><option value="" disabled selected>Choose…</option>{{range $opts}}{{if ne .ID $c.ID}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}</select></div>
-            <div><button class="btn sm secondary" onclick="return confirm('Move every operation and merchant of {{.Name}} into the chosen category and delete {{.Name}}?')">Merge</button></div>
+            <div><button class="btn sm secondary" onclick="return confirm('Move every operation and merchant of {{.Category.Name}} into the chosen category and delete {{.Category.Name}}?')">Merge</button></div>
           </form>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px">
             <form method="post" action="/ui/categories"><input type="hidden" name="action" value="savings"><input type="hidden" name="id" value="{{.ID}}">
               <button class="btn sm secondary">{{if .Savings}}Not savings{{else}}Mark as savings{{end}}</button></form>
             <form method="post" action="/ui/categories"><input type="hidden" name="action" value="archive"><input type="hidden" name="id" value="{{.ID}}">
-              <button class="btn sm danger" onclick="return confirm('Archive {{.Name}}? It disappears from choices and merchants stop going there automatically; old operations keep it.')">Archive</button></form>
+              <button class="btn sm danger" onclick="return confirm('Archive {{.Category.Name}}? It disappears from choices and merchants stop going there automatically; old operations keep it.')">Archive</button></form>
           </div>
         </div>
       </details>
+      {{else}}<span style="width: 34px"></span>{{end}}
     </div>
   </div>
   {{end}}
 </div>
-<p class="muted small" style="margin-top: 12px">Savings categories (deposits, investments) can be left out with the “Without savings” switch on the analytics page. Merging moves operations, remembered merchants and guesses.</p>
+<p class="muted small" style="margin-top: 12px">Bars show spending by {{$unit}}; click one to see its operations. Shares are of the categories shown. Savings categories (deposits, investments) can be left out with the “Without savings” switch on the analytics page. Merging moves operations, remembered merchants and guesses.</p>
+{{else if not .Empty}}
+<div class="card empty" style="margin-top: 14px">{{template "icon" "tag"}}<div>No category matches these filters{{if not .Unused}} — <a href="{{swapAt "/ui/categories" $st "unused" "1"}}">show unused ones</a>{{end}}.</div></div>
+{{end}}
 
 {{if .Archived}}
 <h2 class="section">Archived</h2>
 <div class="ops">
   {{range .Archived}}
   <div class="op">
-    <span class="ava" style="--h: {{hue .Name}}; opacity: .5" aria-hidden="true">{{initial .Name}}</span>
-    <div class="op-main"><a class="op-title muted" href="{{link "/ui/operations" "cat" .Name}}">{{.Name}}</a><div class="op-meta">all time {{kzt .All.Total}} · {{.All.Count}} operations</div></div>
+    <span class="ava" style="--h: {{hue .Category.Name}}; opacity: .5" aria-hidden="true">{{initial .Category.Name}}</span>
+    <div class="op-main"><a class="op-title muted" href="{{link "/ui/operations" "cat" .Category.Name "period" "all"}}">{{.Category.Name}}</a><div class="op-meta">{{if .Stat.Total}}{{kzt .Stat.Total}} in the period · {{.Stat.Count}} operations{{else}}no spending in the period{{end}}</div></div>
     <form method="post" action="/ui/categories"><input type="hidden" name="action" value="restore"><input type="hidden" name="id" value="{{.ID}}"><button class="btn sm secondary">Restore</button></form>
   </div>
   {{end}}

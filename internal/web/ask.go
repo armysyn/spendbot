@@ -588,6 +588,85 @@ func (s *Server) applyPeople(q url.Values, in intent) []string {
 	return done
 }
 
+// applyCategories puts an intent on top of the categories page query: amounts bound a
+// category's spending over the period.
+func (s *Server) applyCategories(q url.Values, in intent, text string) []string {
+	in.Dir = "" // categories are spending only
+	done, rest := s.applyCommon(q, in)
+	for _, c := range rest {
+		if c == "savings" || c == "unused" {
+			q.Del(c)
+			done = append(done, "removed "+c)
+		}
+	}
+	low := strings.ToLower(text)
+	has := func(ws ...string) bool {
+		for _, w := range ws {
+			if strings.Contains(low, w) {
+				return true
+			}
+		}
+		return false
+	}
+	sortKey := ""
+	switch {
+	case has("вырос", "рост", "увелич", "grew", "growth", "increase", "went up"):
+		sortKey = "grew"
+	case has("упал", "снизил", "сократ", "уменьш", "fell", "dropped", "decrease", "went down", "less than before"):
+		sortKey = "fell"
+	case has("чаще", "больше всего операций", "most operations", "most often"):
+		sortKey = "count"
+	case has("средн", "average"):
+		sortKey = "avg"
+	case has("алфавит", "по имени", "by name", "alphabet"):
+		sortKey = "name"
+	}
+	if sortKey == "" {
+		switch in.Sort {
+		case "small", "grew", "fell", "count", "avg", "name":
+			sortKey = in.Sort
+		case analytics.SortBig:
+			sortKey = "big"
+		}
+	}
+	for _, o := range categorySorts {
+		if sortKey != "" && (o.Key == sortKey || sortKey == "big" && o.Key == "") {
+			if o.Key == "" {
+				q.Del("sort")
+			} else {
+				q.Set("sort", o.Key)
+			}
+			done = append(done, strings.ToLower(o.Title))
+		}
+	}
+	switch {
+	case has("без сбережен", "without savings", "no savings", "кроме сбережен"):
+		q.Set("savings", "none")
+		done = append(done, "without savings")
+	case has("сбережен", "накоплен", "инвестиц", "депозит", "savings", "investments"):
+		q.Set("savings", "only")
+		done = append(done, "savings only")
+	}
+	if has("неиспольз", "пуст", "без трат", "unused", "empty", "never used") {
+		q.Set("unused", "1")
+		done = append(done, "unused shown")
+	}
+	return done
+}
+
+const askCategoriesSystem = `You turn a request about a list of spending categories into filters for that list. The list
+shows, per category, how much was spent over a period and how it changed against the previous one.
+You never compute sums: the program does that from your filters. Reply with one JSON object.
+Amounts are in Kazakhstani tenge (₸): "20k", "20к", "20 тыс" = 20000; "1.5m", "1,5 млн" = 1500000.
+Keys (leave a key out when the request does not mention it):
+  "min_amount", "max_amount": number, tenge, inclusive — a category's spending over the period;
+  "from": "YYYY-MM-DD";  "to": "YYYY-MM-DD", inclusive — the period;
+  "text": words to find in the category name;
+  "sort": "big" | "small" | "grew" | "fell" | "count" | "avg" | "name";
+  "clear": list of filters to remove, from "amount", "period", "text", "sort", "savings", "unused".
+The request may be in Russian, Kazakh or English. It refines the current filters: keep what it does not mention.
+Only fill a key the request clearly asks for: never add a period or sorting on your own.`
+
 var peopleSorts = map[string]string{
 	analytics.PeopleTurnover: "by turnover", analytics.PeopleBig: "largest total first",
 	analytics.PeopleSmall: "smallest total first", analytics.PeopleCount: "most operations first",
@@ -648,6 +727,9 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, page string) {
 	}
 	var cats []store.Category
 	system := askPeopleSystem
+	if page == "categories" {
+		system = askCategoriesSystem
+	}
 	if page == "operations" {
 		system = askSystem
 		if cats, err = s.st.Categories(ctx); err != nil {
@@ -691,9 +773,12 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, page string) {
 		}
 	}
 	var done []string
-	if page == "operations" {
+	switch page {
+	case "operations":
 		done = s.apply(q, in, cats)
-	} else {
+	case "categories":
+		done = s.applyCategories(q, in, text)
+	default:
 		done = s.applyPeople(q, in)
 	}
 	if len(done) == 0 {

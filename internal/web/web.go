@@ -165,6 +165,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
 	ui.HandleFunc("POST /ui/operations/ask", s.askOn("operations"))
 	ui.HandleFunc("POST /ui/transfers/ask", s.askOn("transfers"))
+	ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
 	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 	ui.HandleFunc("GET /ui/categories", s.categories)
 	ui.HandleFunc("POST /ui/categories", s.categoryAction)
