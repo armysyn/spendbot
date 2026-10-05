@@ -1,0 +1,31 @@
+{{template "head" "Question batch"}}
+<h1>Batch #{{.ID}}</h1>
+<p class="muted">Pick a category for each merchant — their statement purchases get categorized, and future Wallet payments are categorized automatically.
+Leave "later" if you do not remember: the merchant comes back in the next batch.</p>
+{{if .Answered}}<div class="flash">This batch is already answered.</div>{{end}}
+
+<form method="post">
+{{$cats := .Categories}}
+{{range $i, $it := .Items}}
+<div class="card item">
+  <div>
+    <b>{{merchant $it.Display}}</b> {{if ne $it.Status "open"}}<span class="badge">{{if eq $it.Status "ignored"}}not spending{{else}}answered{{end}}</span>{{end}}
+    <div class="muted small">{{$it.Count}} purchases · <span class="num">{{money $it.TotalMinor $it.Currency}}</span> · {{date $it.First}}{{if ne (date $it.First) (date $it.Last)}} – {{date $it.Last}}{{end}}</div>
+    <ul class="samples">{{range $it.Samples}}<li><span class="num">{{money .AmountMinor .Currency}}</span> · {{date .OccurredAt}}{{with .Kind}} · {{kind .}}{{end}}</li>{{end}}</ul>
+  </div>
+  <div class="fields">
+    <input type="hidden" name="norm_{{$i}}" value="{{$it.Norm}}">
+    <select name="cat_{{$i}}" aria-label="Category for {{$it.Display}}" {{if ne $it.Status "open"}}disabled{{end}}>
+      <option value="">— later —</option>
+      {{range $cats}}<option value="{{.ID}}" {{if eq .ID $it.GuessCategoryID}}selected{{end}}>{{.Name}}{{if eq .ID $it.GuessCategoryID}} ★{{end}}</option>{{end}}
+      <option value="ignore">Not spending / skip</option>
+    </select>
+    <input type="text" name="new_{{$i}}" placeholder="or a new category" maxlength="40" {{if ne $it.Status "open"}}disabled{{end}}>
+    <input type="text" name="note_{{$i}}" placeholder="what is it (optional)" value="{{$it.Answer}}" maxlength="200" {{if ne $it.Status "open"}}disabled{{end}}>
+  </div>
+</div>
+{{end}}
+{{if not .Answered}}<div class="sticky"><button>Send batch</button> <a href="/ui" class="muted small">back</a></div>{{end}}
+</form>
+<p class="muted small">★ — the local model's guess.</p>
+{{template "foot"}}

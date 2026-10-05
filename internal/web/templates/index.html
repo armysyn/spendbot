@@ -1,0 +1,65 @@
+{{template "head" "Home"}}
+{{with .Flash}}<div class="flash">{{.}}</div>{{end}}
+{{with .ModelHint}}<div class="flash">{{.}} <a href="/ui/settings">Open settings</a></div>{{end}}
+
+<h2>Merchant questions</h2>
+{{if .Open}}
+  {{range .Open}}
+  <div class="card row">
+    <div>
+      <a href="/ui/batch/{{.ID}}"><b>Batch #{{.ID}}</b></a>
+      <span class="muted"> · {{.Items}} merchants · <span class="num">{{kzt .TotalMinor}}</span></span>
+      <div class="muted small">made {{datetime .CreatedAt}}</div>
+    </div>
+    <a class="btn" href="/ui/batch/{{.ID}}">Answer</a>
+  </div>
+  {{end}}
+{{else}}
+  <div class="card muted">No open batches.</div>
+{{end}}
+{{if .Waiting}}<p class="muted small">{{.Waiting}} more {{plural .Waiting "question is" "questions are"}} waiting for a batch — it is made when full, or around {{datetime .BatchAt}}.</p>{{end}}
+{{if .Answered}}<p class="muted small">Recently answered: {{range $i, $b := .Answered}}{{if $i}}, {{end}}<a href="/ui/batch/{{$b.ID}}">#{{$b.ID}}</a>{{end}}</p>{{end}}
+
+<h2 id="insights">Insights</h2>
+{{range .Insights}}
+<div class="card kind-{{.Kind}}">
+  <div class="row">
+    <b>{{.Title}}</b>
+    <form method="post" action="/ui/insight/{{.ID}}/dismiss"><button class="ghost" title="Dismiss">Dismiss</button></form>
+  </div>
+  <div>{{.Body}}</div>
+  <div class="muted small">{{datetime .CreatedAt}}</div>
+</div>
+{{else}}
+<div class="card muted">No insights yet — upload a statement and the analysis starts by itself.</div>
+{{end}}
+
+<h2>Upload a statement</h2>
+<form id="upload" class="card drop" method="post" action="/ui/import" enctype="multipart/form-data">
+  <p class="muted small" style="margin-top:0">Kaspi Gold PDF: Kaspi.kz app → My Bank → Kaspi Gold → Statement, up to one year. Uploading again duplicates nothing.</p>
+  <label class="btn big" for="pdf">Choose PDF</label>
+  <input id="pdf" class="hidden-input" type="file" name="pdf" accept=".pdf,application/pdf">
+  <span id="upload-status" class="muted small">upload starts right after you pick a file<span class="desktop-only"> · or drop it here</span></span>
+  <noscript><button>Upload</button></noscript>
+</form>
+<script>
+(() => {
+  const form = document.getElementById('upload');
+  const input = document.getElementById('pdf');
+  const status = document.getElementById('upload-status');
+  input.addEventListener('change', () => {
+    if (!input.files.length) return;
+    status.textContent = 'Uploading ' + input.files[0].name + '…';
+    form.classList.add('busy');
+    form.submit();
+  });
+  for (const ev of ['dragenter', 'dragover']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.add('over'); });
+  for (const ev of ['dragleave', 'drop']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.remove('over'); });
+  form.addEventListener('drop', e => {
+    if (!e.dataTransfer.files.length) return;
+    input.files = e.dataTransfer.files;
+    input.dispatchEvent(new Event('change'));
+  });
+})();
+</script>
+{{template "foot"}}

@@ -1,0 +1,21 @@
+{{template "head" "Statement import"}}
+<h1>Statement import</h1>
+{{if .Err}}
+  <div class="flash">{{.Err}}</div>
+{{else}}
+  <div class="card">
+    <b>{{.File}}</b> <span class="muted">· {{date .From}} – {{date .To}}</span>
+    <p>Operations in the statement: <b>{{.Result.Total}}</b></p>
+    <ul>
+      <li>new purchases categorized from merchant memory: <b>{{.Result.Auto}}</b></li>
+      <li>purchases without a category (questions come in a batch): <b>{{.Result.Review}}</b></li>
+      <li>not spending — incoming money and transfers: <b>{{.Result.Info}}</b></li>
+      <li>matched Wallet payments: <b>{{.Result.Matched}}</b></li>
+      <li>already imported: <b>{{.Result.Duplicates}}</b></li>
+    </ul>
+    {{with .Result.Verify}}<div class="flash">The statement totals do not match: {{.}}. Please report it — the parser needs a fix.</div>{{end}}
+    <p class="muted small">The analysis is already running in the background. Questions and insights will show up on the home page (and in Telegram, if connected).</p>
+  </div>
+{{end}}
+<a class="btn" href="/ui">Home</a>
+{{template "foot"}}

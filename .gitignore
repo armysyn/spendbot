@@ -1,0 +1,12 @@
+/bin/
+.env
+deploy/.env
+*.db
+*.db-wal
+*.db-shm
+/backups/
+spendbot.log
+/statements/
+clickhouse.launchd.log
+.DS_Store
+/dist/

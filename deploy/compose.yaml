@@ -1,0 +1,24 @@
+services:
+  spendbot:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    volumes: [ "spendbot-data:/data" ]
+    ports: [ "127.0.0.1:8080:8080" ]   # expose only via Tailscale or Caddy
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 128M }
+
+  # optional: a local model on the server (docker compose --profile llm up -d)
+  # in .env: ANALYSIS_LLM_URL=http://llm:11434/v1, ANALYSIS_LLM_MODEL=qwen2.5:1.5b
+  llm:
+    image: ollama/ollama
+    profiles: [ "llm" ]
+    volumes: [ "ollama:/root/.ollama" ]
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 2G }
+
+volumes:
+  spendbot-data:
+  ollama:

@@ -1,0 +1,175 @@
+{{template "head" "Analytics"}}
+<h1>Analytics</h1>
+{{if .Fallback}}<div class="flash">ClickHouse is unavailable — the numbers come from the main database (SQLite). They are the same, just without the latest sync.</div>{{end}}
+{{if .Empty}}
+  <div class="card muted">No spending yet — upload a statement on the <a href="/ui">home page</a>.</div>
+{{else}}
+{{$d := .D}}{{$t := .D.Totals}}
+
+{{$ns := ""}}{{if .NoSavings}}{{$ns = "&nosave=1"}}{{end}}
+<form class="chips" method="get" action="/ui/analytics">
+  {{range $i, $p := .Periods}}{{if lt $i 4}}<a class="chip {{if eq $p.Key $.Current.Key}}on{{end}}" href="?period={{$p.Key}}{{$ns}}">{{$p.Title}}</a>{{end}}{{end}}
+  {{if .NoSavings}}<input type="hidden" name="nosave" value="1">{{end}}
+  <select name="period" aria-label="Month" onchange="this.form.submit()">
+    <option value="">month…</option>
+    {{range $i, $p := .Periods}}{{if ge $i 4}}<option value="{{$p.Key}}" {{if eq $p.Key $.Current.Key}}selected{{end}}>{{$p.Title}}</option>{{end}}{{end}}
+  </select>
+  <noscript><button>Show</button></noscript>
+  <span class="muted small">{{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}} · {{.Current.Days}} days · data: {{.Source}}</span>
+</form>
+<div class="chips">
+  <a class="switch {{if .NoSavings}}on{{end}}" role="switch" aria-checked="{{if .NoSavings}}true{{else}}false{{end}}"
+     href="?period={{.Current.Key}}{{if not .NoSavings}}&nosave=1{{end}}"><span class="knob"></span>Without savings</a>
+  <span class="muted small">{{if .NoSavings}}{{if .SavingsNames}}not counted as spending: {{range $i, $n := .SavingsNames}}{{if $i}}, {{end}}{{$n}}{{end}}{{else}}no category is marked as savings{{end}}{{else}}savings: {{if .SavingsNames}}{{range $i, $n := .SavingsNames}}{{if $i}}, {{end}}{{$n}}{{end}}{{else}}none marked{{end}}{{end}}</span>
+  <details class="small" style="flex-basis: 100%">
+    <summary class="muted" style="cursor: pointer">Which categories are savings?</summary>
+    <form class="card" method="post" action="/ui/savings" style="margin-top: 8px">
+      <input type="hidden" name="period" value="{{.Current.Key}}">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px 16px">
+        {{range .Categories}}<label><input type="checkbox" name="savings" value="{{.ID}}" {{if .Savings}}checked{{end}}> {{.Name}}</label>{{end}}
+      </div>
+      <p class="muted">With the switch on, spending in checked categories is not counted. If a transaction is split, only the part in a checked category is excluded.</p>
+      <button>Save</button>
+    </form>
+  </details>
+</div>
+
+{{range .Recs}}
+  {{if .OK}}
+  <details class="card small">
+    <summary><span class="ok">✓ Reconciled</span> with statement {{.Statement.Account}} for {{date .Statement.From}} – {{date .Statement.To}}: all {{len .Lines}} header totals match the database to the tiyn</summary>
+    <div class="scroll"><table class="data">
+      <tr><th>Total</th><th class="num">Statement</th><th class="num">Database</th><th></th></tr>
+      {{range .Lines}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Statement}}</td><td class="num">{{kzt .Database}}</td><td class="ok">✓</td></tr>{{end}}
+    </table></div>
+  </details>
+  {{else}}
+  <div class="card flash">
+    <b>✗ Statement {{.Statement.Account}} for {{date .Statement.From}} – {{date .Statement.To}} does not reconcile</b>
+    <div class="scroll"><table class="data">
+      <tr><th>Total</th><th class="num">Statement</th><th class="num">Database</th><th></th></tr>
+      {{range .Lines}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Statement}}</td><td class="num">{{kzt .Database}}</td><td>{{if .OK}}<span class="ok">✓</span>{{else}}<span class="bad">✗ differs</span>{{end}}</td></tr>{{end}}
+    </table></div>
+  </div>
+  {{end}}
+{{end}}
+{{if $d.Problems}}<div class="flash">✗ The internal check failed: {{range $d.Problems}}{{.}}; {{end}}— do not trust the numbers below and please report it.</div>{{end}}
+
+<div class="tiles">
+  <div class="tile hero"><div class="label">Spending{{if .NoSavings}} without savings{{end}}</div><div class="value num">{{kzt $t.Spend}}</div><div class="note">purchases + cash{{if $t.TransferSpend}} + transfers counted as spending{{end}}, refunds subtracted</div></div>
+  <div class="tile"><div class="label">Average per day</div><div class="value num">{{kzt $d.PerDay}}</div></div>
+  <div class="tile"><div class="label">Purchases</div><div class="value num">{{$t.PurchaseCount}}</div><div class="note">for {{kzt $t.Purchases}}{{if $t.Refunds}}, refunds {{kzt $t.Refunds}}{{end}}</div></div>
+  <div class="tile"><div class="label">Average check</div><div class="value num">{{kzt $t.AvgCheck}}</div></div>
+  <div class="tile"><div class="label">Cash</div><div class="value num">{{kzt $t.Cash}}</div><div class="note">{{$t.CashCount}} withdrawals</div></div>
+  <div class="tile"><div class="label">Uncategorized</div><div class="value num">{{kzt $t.Uncategorized}}</div><div class="note"><a href="/ui">answer questions</a></div></div>
+  {{if $t.TransferSpend}}<div class="tile"><div class="label">Transfers as spending</div><div class="value num">{{kzt $t.TransferSpend}}</div><div class="note">{{$t.TransferSpendCount}} {{plural (int $t.TransferSpendCount) "transfer" "transfers"}} with a category, such as rent · <a href="/ui/transfers">transfers</a></div></div>{{end}}
+  <div class="tile"><div class="label">Transfers to people</div><div class="value num">{{kzt $t.TransfersOut}}</div><div class="note">no category — not counted as spending</div></div>
+  <div class="tile"><div class="label">Card top-ups</div><div class="value num">{{kzt $t.Income}}</div><div class="note">not counted as spending</div></div>
+</div>
+
+<h2>By month</h2>
+<div class="card">
+  <div class="cols" role="img" aria-label="Spending by month">
+    {{$n := len $d.Months}}
+    {{range $i, $m := $d.Months}}
+    <div class="col" tabindex="0" data-tip="{{$m.Label}} · {{kzt $m.Value}} · {{pct $m.Share}} of spending · {{$m.Sub}}">
+      {{if or (eq $m.Pct 100.0) (last $i $n)}}<span class="col-val">{{compact $m.Value}}</span>{{end}}
+      <div class="col-fill" style="height: calc({{width $m.Pct}} * 0.85)"></div>
+    </div>
+    {{end}}
+  </div>
+  <div class="col-labels" aria-hidden="true">{{range $d.Months}}<span>{{.Label}}</span>{{end}}</div>
+  <details class="tbl"><summary>Table</summary><div class="scroll"><table class="data">
+    <tr><th>Month</th><th class="num">Spending</th><th class="num">Share</th><th class="num">Operations</th></tr>
+    {{range $d.Months}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Value}}</td><td class="num">{{pct .Share}}</td><td class="num">{{.Count}}</td></tr>{{end}}
+  </table></div></details>
+</div>
+
+<div class="grid2">
+<div>
+<h2>Weekdays — most to least expensive</h2>
+<div class="card">
+  {{range $d.Weekdays}}
+  <div class="hbar" tabindex="0" data-tip="{{.Label}} · total {{kzt .Value}} ({{pct .Share}}) · on average {{kzt .Avg}} per such day · {{.Sub}}">
+    <div class="hbar-label">{{.Label}}<span class="muted small">avg {{compact .Avg}}</span></div>
+    <div class="hbar-track"><div class="hbar-fill {{if not .Value}}zero{{end}}" style="width: calc({{width .Pct}} * 0.7)"></div><span class="hbar-value">{{compact .Value}}</span></div>
+  </div>
+  {{end}}
+  <p class="muted small">The average divides by the number of such days in the period's calendar, not only days with purchases.</p>
+  <details class="tbl"><summary>Table</summary><div class="scroll"><table class="data">
+    <tr><th>Day</th><th class="num">Total</th><th class="num">Share</th><th class="num">Average per day</th><th class="num">Operations</th></tr>
+    {{range $d.Weekdays}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Value}}</td><td class="num">{{pct .Share}}</td><td class="num">{{kzt .Avg}}</td><td class="num">{{.Count}}</td></tr>{{end}}
+  </table></div></details>
+</div>
+</div>
+<div>
+<h2>Categories</h2>
+<div class="card">
+  {{range $d.Categories}}
+  <div class="hbar" tabindex="0" data-tip="{{.Label}} · {{kzt .Value}} · {{pct .Share}} of spending · {{.Sub}}">
+    <div class="hbar-label">{{.Label}}<span class="muted small">{{pct .Share}}</span></div>
+    <div class="hbar-track"><div class="hbar-fill" style="width: calc({{width .Pct}} * 0.7)"></div><span class="hbar-value">{{compact .Value}}</span></div>
+  </div>
+  {{end}}
+  <details class="tbl"><summary>Table</summary><div class="scroll"><table class="data">
+    <tr><th>Category</th><th class="num">Amount</th><th class="num">Share</th><th class="num">Operations</th></tr>
+    {{range $d.Categories}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Value}}</td><td class="num">{{pct .Share}}</td><td class="num">{{.Count}}</td></tr>{{end}}
+  </table></div></details>
+</div>
+</div>
+</div>
+
+<h2>Top merchants by amount</h2>
+<div class="card scroll">
+  <table class="data">
+    <tr><th>#</th><th>Merchant</th><th class="hide-narrow"></th><th class="num">Amount</th><th class="num">Share</th><th class="num">Purchases</th><th class="num hide-narrow">Average check</th></tr>
+    {{range $i, $m := $d.Merchants}}
+    <tr data-tip="{{$m.Name}} · {{kzt $m.Total}} · {{$m.Count}} purchases · average check {{kzt $m.Avg}}">
+      <td class="muted">{{inc $i}}</td><td>{{$m.Name}}</td>
+      <td class="hide-narrow" style="width: 22%"><span class="mini" style="width: {{width $m.Pct}}"></span></td>
+      <td class="num">{{kzt $m.Total}}</td><td class="num">{{pct $m.Share}}</td><td class="num">{{$m.Count}}</td><td class="num hide-narrow">{{kzt $m.Avg}}</td>
+    </tr>
+    {{end}}
+  </table>
+  <p class="muted small">Merchants are grouped by normalized name: "MAGNUM #12" and "Magnum" count together. All ATMs are one row.</p>
+</div>
+
+<div class="grid2">
+<div>
+<h2>Most expensive days</h2>
+<div class="card scroll">
+  <table class="data">
+    <tr><th>Day</th><th></th><th class="num">Amount</th><th>Largest spending</th></tr>
+    {{range $d.TopDays}}
+    <tr data-tip="{{date .Date}} · {{kzt .Total}} · {{.Count}} operations">
+      <td>{{date .Date}} <span class="muted">{{wday .Date}}</span></td>
+      <td style="width: 25%"><span class="mini" style="width: {{width .Pct}}"></span></td>
+      <td class="num">{{kzt .Total}}</td><td class="small">{{.TopMerchant}} · {{kzt .TopAmount}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+</div>
+<div>
+<h2>Check size</h2>
+<div class="card">
+  {{range $d.Checks}}
+  <div class="hbar" tabindex="0" data-tip="{{.Label}} · {{.Count}} purchases ({{pct .Share}}) for {{kzt .Sum}}">
+    <div class="hbar-label">{{.Label}}<span class="muted small">for {{compact .Sum}}</span></div>
+    <div class="hbar-track"><div class="hbar-fill {{if not .Value}}zero{{end}}" style="width: calc({{width .Pct}} * 0.7)"></div><span class="hbar-value">{{.Count}} · {{pct .Share}}</span></div>
+  </div>
+  {{end}}
+  <p class="muted small">Number of purchases by check size; cash is not included.</p>
+</div>
+</div>
+</div>
+
+<h2>Largest purchases</h2>
+<div class="card scroll">
+  <table class="data">
+    <tr><th>Date</th><th>Merchant</th><th>Category</th><th class="num">Amount</th></tr>
+    {{range $d.Biggest}}<tr><td>{{date .Date}}</td><td>{{.Merchant}}</td><td class="muted">{{.Category}}</td><td class="num">{{kzt .Amount}}</td></tr>{{end}}
+  </table>
+</div>
+{{end}}
+{{template "foot"}}
