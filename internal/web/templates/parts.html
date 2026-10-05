@@ -1,10 +1,11 @@
-{{/* One operation row. Takes dict: Op, Cats (categories for editing, nil — no editing), Back, Type. */}}
+{{/* One operation row. Takes dict: Op, Cats (categories for editing, nil — no editing), Back, Type, Date (show the date). */}}
 {{define "op"}}{{$o := .Op}}
 <div class="op">
   <span class="ava{{if eq $o.MerchantKey "#cash"}} cash{{end}}" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>
   <div class="op-main">
     {{if $o.MerchantKey}}<a class="op-title" href="{{link "/ui/operations" "m" $o.MerchantKey "type" .Type}}" title="All operations of {{$o.Merchant}}">{{$o.Merchant}}</a>{{else}}<span class="op-title">{{$o.Merchant}}</span>{{end}}
     <div class="op-meta">
+      {{if .Date}}<span>{{date $o.At}}</span>{{end}}
       {{if and (ne $o.Source "import") (hasTime $o.At)}}<span>{{hm $o.At}}</span>{{end}}
       {{if $o.Kind}}{{if not (purchase $o.Kind)}}<span class="tag">{{kind $o.Kind}}</span>{{end}}{{else if eq $o.Source "wallet"}}<span class="tag">Apple Wallet</span>{{else if eq $o.Source "manual"}}<span class="tag">manual</span>{{end}}
       {{if $o.Spend}}

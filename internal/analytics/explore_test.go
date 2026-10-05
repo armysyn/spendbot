@@ -89,3 +89,47 @@ func TestPrevPeriod(t *testing.T) {
 		t.Error("no percentage against zero")
 	}
 }
+
+func TestSortStatsGroups(t *testing.T) {
+	st := testStore(t)
+	seed(t, st)
+	rows := ledger(t, st)
+	p := Period{From: time.Date(2026, 8, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty)}
+
+	// the amount range compares amounts without the sign: the 5,000 refund is inside 1,000–10,000
+	r := Operations(rows, Filter{Period: p, Min: 1_000 * tg, Max: 10_000 * tg})
+	if len(r.Ops) != 4 {
+		t.Fatalf("range: %+v", r.Ops)
+	}
+	SortOps(r.Ops, SortBig)
+	if r.Ops[0].Amount != 10_000*tg || r.Ops[len(r.Ops)-1].Amount != 1_800*tg {
+		t.Errorf("sorted: %+v", r.Ops)
+	}
+	s := StatsOf(r.Ops)
+	if s.Count != 4 || s.Largest != 10_000*tg || s.Smallest != 1_800*tg || s.Median != 5_000*tg || s.Avg != (10_000+5_000+5_000+1_800)*tg/4 {
+		t.Errorf("stats: %+v", s)
+	}
+	// money in only
+	in := Operations(rows, Filter{Period: p, Type: TypeAll, Dir: DirIn})
+	for _, o := range in.Ops {
+		if o.Amount >= 0 {
+			t.Errorf("money in: %+v", o)
+		}
+	}
+	// groups add up to the list, months in time order
+	all := Operations(rows, Filter{Period: p})
+	for _, g := range Groupings {
+		var out int64
+		n := 0
+		for _, x := range GroupOps(all.Ops, g.Key) {
+			out += x.Out - x.In
+			n += x.Count
+		}
+		if out != all.Total || n != len(all.Ops) {
+			t.Errorf("group %s: %d in %d ops, list %d in %d", g.Key, out, n, all.Total, len(all.Ops))
+		}
+	}
+	if ms := GroupOps(all.Ops, "month"); len(ms) != 2 || ms[0].Label != "August 2026" {
+		t.Errorf("months: %+v", ms)
+	}
+}

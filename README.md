@@ -16,8 +16,14 @@ local model through Ollama. Your data never leaves your computer unless you conn
   merchant, a calendar heatmap, most expensive days, check sizes; changes against the previous
   period; a "without savings" switch; reconciliation with every statement. Every bar, day and
   merchant opens its operations, and their sum equals the number on the chart.
-- **Operations** — every operation grouped by day, with filters by period, kind, category,
-  merchant and text, CSV export, and a category change for one purchase or all purchases of a merchant.
+- **Operations** — every operation, with filters by period, kind, category, merchant or person,
+  text, amount range and direction; sorting by date or amount; grouping by month, week, day,
+  weekday, category, merchant or kind with sums; average, median and largest; CSV export; a
+  category change for one purchase or all purchases of a merchant.
+- **Requests in plain words** — "between 20k and 50k, largest first" on the operations page
+  becomes filters on top of the current ones. The local model (or the bot's model) only
+  translates the words; it never sees the operations, and the program computes every number.
+  Amounts and sorting words work without any model.
 - **Categories** — spending per category, add, rename, merge, archive, mark as savings.
 - **Background insights** — subscriptions and recurring payments, price increases, anomalies,
   double charges, growing categories, saving tips.

@@ -113,7 +113,15 @@ type Filter struct {
 	Merchant string   // a normalized merchant name or CashKey
 	Query    string   // words that must all appear in the merchant or category name
 	Exclude  []string // savings categories not counted as spending
+	Min, Max int64    // bounds of the amount without its sign, tiyn, inclusive; 0 — no bound
+	Dir      string   // DirOut — money out (spending, sent), DirIn — money in; empty — both
 }
+
+// Money directions for Filter.Dir.
+const (
+	DirOut = "out"
+	DirIn  = "in"
+)
 
 // Op is a row of the operations page.
 type Op struct {
@@ -195,6 +203,9 @@ func Operations(all []store.LedgerRow, f Filter) Ops {
 				continue
 			}
 		}
+		if !inRange(amount, f) {
+			continue
+		}
 		o := Op{TxID: r.TxID, At: r.At, Merchant: merchantName(r), MerchantKey: merchantKey(r), Kind: r.Kind,
 			Status: r.Status, Source: r.Source, Amount: amount, Full: r.Amount, Categories: r.Categories,
 			Spend: spend || IsSpend(r)}
@@ -215,6 +226,24 @@ func Operations(all []store.LedgerRow, f Filter) Ops {
 		return out.Ops[i].TxID > out.Ops[j].TxID
 	})
 	return out
+}
+
+func abs(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+func inRange(amount int64, f Filter) bool {
+	a := abs(amount)
+	switch {
+	case f.Min > 0 && a < f.Min, f.Max > 0 && a > f.Max:
+		return false
+	case f.Dir == DirOut && amount <= 0, f.Dir == DirIn && amount >= 0:
+		return false
+	}
+	return true
 }
 
 // inCategory reports whether a spending row belongs to a category, pseudo-categories included.
@@ -286,5 +315,167 @@ func UsageByCategory(all []store.LedgerRow, p Period) map[string]CategoryUsage {
 			out[c] = u
 		}
 	}
+	return out
+}
+
+// Sort orders for SortOps.
+const (
+	SortNew   = "new"   // newest first (the default)
+	SortOld   = "old"   // oldest first
+	SortBig   = "big"   // largest amount first
+	SortSmall = "small" // smallest amount first
+)
+
+// SortOps reorders operations; amounts compare without their sign, ties go newest first.
+func SortOps(ops []Op, by string) {
+	newer := func(a, b Op) bool {
+		if !a.At.Equal(b.At) {
+			return a.At.After(b.At)
+		}
+		return a.TxID > b.TxID
+	}
+	sort.SliceStable(ops, func(i, j int) bool {
+		a, b := ops[i], ops[j]
+		switch by {
+		case SortOld:
+			return newer(b, a)
+		case SortBig, SortSmall:
+			if x, y := abs(a.Amount), abs(b.Amount); x != y {
+				return (x > y) == (by == SortBig)
+			}
+		}
+		return newer(a, b)
+	})
+}
+
+// Stats are aggregates of a list of operations; amounts without their sign.
+type Stats struct {
+	Count             int
+	Avg, Median       int64
+	Largest, Smallest int64
+}
+
+func StatsOf(ops []Op) Stats {
+	st := Stats{Count: len(ops)}
+	if len(ops) == 0 {
+		return st
+	}
+	as := make([]int64, len(ops))
+	var sum int64
+	for i, o := range ops {
+		as[i] = abs(o.Amount)
+		sum += as[i]
+	}
+	sort.Slice(as, func(i, j int) bool { return as[i] < as[j] })
+	st.Avg = sum / int64(len(as))
+	st.Smallest, st.Largest = as[0], as[len(as)-1]
+	if n := len(as); n%2 == 1 {
+		st.Median = as[n/2]
+	} else {
+		st.Median = (as[n/2-1] + as[n/2]) / 2
+	}
+	return st
+}
+
+// Groupings for GroupOps.
+var Groupings = []struct{ Key, Title string }{
+	{"month", "month"}, {"week", "week"}, {"day", "day"}, {"weekday", "weekday"},
+	{"category", "category"}, {"merchant", "merchant or person"}, {"kind", "kind"},
+}
+
+// Group is one row of a grouped list: operations sharing a month, a category, a merchant…
+type Group struct {
+	Label    string
+	Count    int
+	Out, In  int64   // money out and money in, both positive
+	Pct      float64 // Out relative to the largest group
+	Share    float64 // Out as a share of all groups, %
+	From, To time.Time
+	Category string // for drill-down links
+	Merchant string
+	sortKey  string
+}
+
+// GroupOps aggregates operations; time groups go in time order, the rest by money out.
+func GroupOps(ops []Op, by string) []Group {
+	idx := map[string]int{}
+	var out []Group
+	var total int64
+	for _, o := range ops {
+		g := Group{}
+		d := startOfDay(o.At)
+		switch by {
+		case "month":
+			m := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, d.Location())
+			g = Group{Label: m.Format("January 2006"), From: m, To: m.AddDate(0, 1, 0), sortKey: m.Format("2006-01")}
+		case "week":
+			w := d.AddDate(0, 0, -((int(d.Weekday()) + 6) % 7))
+			g = Group{Label: "week of " + w.Format("2 Jan 2006"), From: w, To: w.AddDate(0, 0, 7), sortKey: w.Format("2006-01-02")}
+		case "day":
+			g = Group{Label: d.Format("Mon, 2 Jan 2006"), From: d, To: d.AddDate(0, 0, 1), sortKey: d.Format("2006-01-02")}
+		case "weekday":
+			wd := (int(d.Weekday()) + 6) % 7
+			g = Group{Label: weekdayNames[d.Weekday()], sortKey: fmt.Sprint(wd)}
+		case "category":
+			c := Uncategorized
+			switch {
+			case len(o.Categories) > 0:
+				c = strings.Join(o.Categories, " + ")
+			case o.MerchantKey == CashKey:
+				c = CashCategory
+			case !o.Spend:
+				c = "Not spending"
+			}
+			g = Group{Label: c, sortKey: c}
+			if len(o.Categories) == 1 || c == CashCategory || c == Uncategorized {
+				g.Category = c
+			}
+		case "merchant":
+			g = Group{Label: o.Merchant, Merchant: o.MerchantKey, sortKey: o.MerchantKey + "|" + o.Merchant}
+		default: // kind
+			k := kaspi.KindName(o.Kind)
+			if o.Kind == "" {
+				k = "Apple Wallet or manual"
+			}
+			g = Group{Label: k, sortKey: k}
+		}
+		i, ok := idx[g.sortKey]
+		if !ok {
+			i = len(out)
+			idx[g.sortKey] = i
+			out = append(out, g)
+		}
+		out[i].Count++
+		if o.Amount >= 0 {
+			out[i].Out += o.Amount
+			total += o.Amount
+		} else {
+			out[i].In -= o.Amount
+		}
+	}
+	var max int64
+	for _, g := range out {
+		if g.Out > max {
+			max = g.Out
+		}
+	}
+	for i := range out {
+		if max > 0 {
+			out[i].Pct = float64(out[i].Out) * 100 / float64(max)
+		}
+		if total > 0 {
+			out[i].Share = float64(out[i].Out) * 100 / float64(total)
+		}
+	}
+	timeOrder := by == "month" || by == "week" || by == "day" || by == "weekday"
+	sort.SliceStable(out, func(i, j int) bool {
+		if timeOrder {
+			return out[i].sortKey < out[j].sortKey
+		}
+		if out[i].Out != out[j].Out {
+			return out[i].Out > out[j].Out
+		}
+		return out[i].In > out[j].In
+	})
 	return out
 }

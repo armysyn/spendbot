@@ -191,6 +191,17 @@ type operationsData struct {
 	Merchant     string // merchant key
 	MerchantName string
 	Query        string
+	Min, Max     string // amount bounds as typed, tenge
+	Dir          string
+	Sort         string
+	Group        string
+	Groups       []analytics.Group
+	Groupings    []struct{ Key, Title string }
+	Stats        analytics.Stats
+	Flat         bool // a plain list: sorted by amount or oldest first, not by day
+	Ask          string
+	AI           bool // a model understands requests; otherwise rules only
+	State        string
 	NoSavings    bool
 	Categories   []store.Category
 	Ops          analytics.Ops
@@ -206,6 +217,19 @@ const opsPage = 300
 // filterFrom reads the operations filter from the query string.
 func filterFrom(q url.Values, ps []analytics.Period, loc *time.Location) (analytics.Filter, bool) {
 	f := analytics.Filter{Type: q.Get("type"), Category: q.Get("cat"), Merchant: q.Get("m"), Query: strings.TrimSpace(q.Get("q"))}
+	bound := func(k string) int64 {
+		if v, ok := parseAmount(q.Get(k)); ok && v > 0 {
+			return int64(v*100 + 0.5)
+		}
+		return 0
+	}
+	f.Min, f.Max = bound("min"), bound("max")
+	if f.Min > 0 && f.Max > 0 && f.Min > f.Max {
+		f.Min, f.Max = f.Max, f.Min
+	}
+	if d := q.Get("dir"); d == analytics.DirIn || d == analytics.DirOut {
+		f.Dir = d
+	}
 	switch f.Type {
 	case analytics.TypeSpend, analytics.TypeTransfers, analytics.TypeAll:
 	default:
@@ -262,11 +286,30 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 		d.From, d.To = q.Get("from"), q.Get("to")
 	}
 	d.Type, d.Category, d.Merchant, d.Query = f.Type, f.Category, f.Merchant, f.Query
+	d.Min, d.Max, d.Dir, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, q.Get("sort"), q.Get("group")
+	d.Groupings, d.Ask, d.AI = analytics.Groupings, q.Get("ask"), s.aiReady()
+	sq := cloneValues(q)
+	for _, k := range []string{"msg", "limit", "ask"} {
+		sq.Del(k)
+	}
+	d.State = sq.Encode()
 	if d.Categories, err = s.st.Categories(ctx); err != nil {
 		s.fail(w, err)
 		return
 	}
 	d.Ops = analytics.Operations(rows, f)
+	if _, ok := sortTitles[d.Sort]; !ok {
+		d.Sort = analytics.SortNew
+	}
+	analytics.SortOps(d.Ops.Ops, d.Sort)
+	d.Flat = d.Sort != analytics.SortNew
+	d.Stats = analytics.StatsOf(d.Ops.Ops)
+	if d.Group != "" {
+		d.Groups = analytics.GroupOps(d.Ops.Ops, d.Group)
+		if len(d.Groups) == 0 {
+			d.Group = ""
+		}
+	}
 	if d.Merchant != "" && len(d.Ops.Ops) > 0 {
 		d.MerchantName = d.Ops.Ops[0].Merchant
 	}
@@ -327,6 +370,7 @@ func (s *Server) operationsCSV(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		ops = analytics.Operations(rows, f).Ops
+		analytics.SortOps(ops, r.URL.Query().Get("sort"))
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="spendbot-operations.csv"`)
@@ -752,4 +796,21 @@ func cols(bars []analytics.Bar, target, nosave, label string, short bool) column
 		c.Cols = append(c.Cols, col)
 	}
 	return c
+}
+
+// swap is the operations page with the current filters (an encoded query) where the given keys
+// are replaced; an empty value removes a key.
+func swap(state string, kv ...string) string {
+	q, _ := url.ParseQuery(state)
+	for i := 0; i+1 < len(kv); i += 2 {
+		if kv[i+1] == "" {
+			q.Del(kv[i])
+		} else {
+			q.Set(kv[i], kv[i+1])
+		}
+	}
+	if len(q) == 0 {
+		return "/ui/operations"
+	}
+	return "/ui/operations?" + q.Encode()
 }

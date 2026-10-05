@@ -24,6 +24,7 @@ import (
 	"spendbot/internal/clickhouse"
 	"spendbot/internal/importer"
 	"spendbot/internal/kaspi"
+	"spendbot/internal/llm"
 	"spendbot/internal/merchant"
 	"spendbot/internal/money"
 	"spendbot/internal/statement"
@@ -51,6 +52,7 @@ type Server struct {
 	tmpl        *template.Template
 	ch          *clickhouse.Client // nil — analytics reads SQLite
 	settings    *Settings          // nil — no settings page
+	ai          llm.Provider       // understands requests on the operations page; nil — rules only
 	pull        pullState
 	pullMu      sync.Mutex
 }
@@ -120,6 +122,7 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"swap":     swap,
 		"subi":     func(a, b int) int { return a - b },
 		"add":      func(a, b int) int { return a + b },
 		"title": func(s string) string {
@@ -159,6 +162,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	ui.HandleFunc("GET /ui/analytics", s.analytics)
 	ui.HandleFunc("GET /ui/operations", s.operations)
 	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
+	ui.HandleFunc("POST /ui/operations/ask", s.ask)
 	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 	ui.HandleFunc("GET /ui/categories", s.categories)
 	ui.HandleFunc("POST /ui/categories", s.categoryAction)

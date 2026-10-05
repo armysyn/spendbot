@@ -5,7 +5,7 @@
     <span class="ava" style="--h: {{hue .Name}}; width: 48px; height: 48px; font-size: 20px; border-radius: 14px" aria-hidden="true">{{initial .Name}}</span>
     <div><h1>{{.Name}}</h1>{{with .Person}}<div class="sub">{{date .First}} – {{date .Last}}</div>{{end}}</div>
   </div>
-  <div class="actions"><a class="btn ghost sm" href="/ui/transfers">{{template "icon" "left"}}All people</a></div>
+  <div class="actions"><a class="btn secondary sm" href="{{link "/ui/operations" "type" "transfers" "q" .Name}}">{{template "icon" "ops"}}Operations, filters and AI</a><a class="btn ghost sm" href="/ui/transfers">{{template "icon" "left"}}All people</a></div>
 </div>
 {{template "flash" .Flash}}
 {{with .Person}}

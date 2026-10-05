@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -181,3 +183,72 @@ func TestCategoryActions(t *testing.T) {
 		t.Error("merge into itself must be refused")
 	}
 }
+
+func TestRuleIntent(t *testing.T) {
+	cases := []struct {
+		text      string
+		min, max  int64 // tenge, -1 — none
+		sort, grp string
+	}{
+		{"вытащи мне между 20к и 50к", 20000, 50000, "", ""},
+		{"between 20k and 50k", 20000, 50000, "", ""},
+		{"от 20 000 до 50 000 ₸", 20000, 50000, "", ""},
+		{"20-50к", 20000, 50000, "", ""},
+		{"больше 100к", 100000, -1, "", ""},
+		{"не больше 1,5 млн", -1, 1500000, "", ""},
+		{"under 5000", -1, 5000, "", ""},
+		{"самые крупные по месяцам", -1, -1, "big", "month"},
+		{"за сентябрь 2026 по категориям", -1, -1, "", "category"},
+	}
+	for _, c := range cases {
+		in := ruleIntent(c.text)
+		toT := func(v int64) int64 {
+			if v < 0 {
+				return -1
+			}
+			return v / 100
+		}
+		if toT(in.Min) != c.min || toT(in.Max) != c.max || in.Sort != c.sort || in.Group != c.grp {
+			t.Errorf("%q: min %d max %d sort %q group %q", c.text, toT(in.Min), toT(in.Max), in.Sort, in.Group)
+		}
+	}
+}
+
+type fakeAI struct{ reply string }
+
+func (f fakeAI) Available() bool { return true }
+func (f fakeAI) JSON(context.Context, string, string) (string, error) {
+	return f.reply, nil
+}
+
+// The request refines the current filters: a person picked before stays, the amount is added.
+func TestAskKeepsFilters(t *testing.T) {
+	st, err := store.Open(context.Background(), t.TempDir()+"/t.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	seedOps(t, st)
+	mux := http.NewServeMux()
+	srv := New(st, nil, "", 3, time.Minute, almaty, slogDiscard())
+	// the model misreads the amount; the rules' exact reading wins, the rest comes from the model
+	srv.WithAI(fakeAI{`{"min_amount": 20, "max_amount": 50, "sort": "big", "category": "No Such"}`}).Register(mux)
+	form := url.Values{"prompt": {"между 20к и 50к, сначала крупные"}, "state": {"type=transfers&q=Adam+S."}}
+	w := do(mux, "POST", "/ui/operations/ask", strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", false)
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	q := loc.Query()
+	if q.Get("type") != "transfers" || q.Get("q") != "Adam S." || q.Get("min") != "20000" || q.Get("max") != "50000" ||
+		q.Get("sort") != "big" || q.Get("cat") != "" || !strings.Contains(q.Get("msg"), "20,000") {
+		t.Fatalf("redirect %s", loc)
+	}
+	page := do(mux, "GET", loc.String(), nil, "", false).Body.String()
+	if !strings.Contains(page, "50,000") || !strings.HasSuffix(strings.TrimSpace(page), "</html>") {
+		t.Fatal("filtered page")
+	}
+	// Adam S. sent 50,000 and received 10,000: only the transfer is in the range
+	if !strings.Contains(page, `<div class="value num">1</div>`) {
+		t.Errorf("one operation expected in 20k–50k")
+	}
+}
+
+func slogDiscard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

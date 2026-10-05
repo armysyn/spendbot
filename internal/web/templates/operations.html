@@ -1,5 +1,5 @@
 {{template "head" .Page}}
-{{$ns := bool1 .NoSavings}}
+{{$st := .State}}
 <div class="page-head">
   <div>
     <h1>Operations</h1>
@@ -11,20 +11,30 @@
 {{if .Empty}}
   <div class="card empty">{{template "icon" "ops"}}<div>No operations yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
 {{else}}
+
+<form class="card ask" method="post" action="/ui/operations/ask">
+  <span class="ic">{{template "icon" "spark"}}</span>
+  <input type="hidden" name="state" value="{{.State}}">
+  <input type="text" name="prompt" value="{{.Ask}}" maxlength="300" aria-label="Ask in plain words"
+         placeholder="Ask in plain words: between 20k and 50k · over 100k, largest first · only September · by month">
+  <button class="btn">Apply</button>
+  <div class="ask-note muted tiny">{{if .AI}}A model turns your words into filters on top of the current ones; the program computes every number. Your operations are not sent to the model.{{else}}No model is running — amounts (“between 20k and 50k”, “over 100k”), sorting and grouping words are still understood.{{end}}</div>
+</form>
+
 <form class="toolbar" method="get" action="/ui/operations" id="filters">
   <div class="seg" role="group" aria-label="Kind">
-    <a class="{{if eq .Type "spend"}}on{{end}}" href="{{link "/ui/operations" "period" .Current.Key "cat" .Category "m" .Merchant "q" .Query "nosave" $ns}}">Spending</a>
-    <a class="{{if eq .Type "transfers"}}on{{end}}" href="{{link "/ui/operations" "type" "transfers" "period" .Current.Key "m" .Merchant "q" .Query}}">Transfers</a>
-    <a class="{{if eq .Type "all"}}on{{end}}" href="{{link "/ui/operations" "type" "all" "period" .Current.Key "m" .Merchant "q" .Query}}">Everything</a>
+    <a class="{{if eq .Type "spend"}}on{{end}}" href="{{swap $st "type" "" "dir" ""}}">Spending</a>
+    <a class="{{if eq .Type "transfers"}}on{{end}}" href="{{swap $st "type" "transfers" "cat" "" "nosave" ""}}">Transfers</a>
+    <a class="{{if eq .Type "all"}}on{{end}}" href="{{swap $st "type" "all" "cat" "" "nosave" ""}}">All operations</a>
   </div>
-  <input type="hidden" name="type" value="{{.Type}}">
+  {{if ne .Type "spend"}}<input type="hidden" name="type" value="{{.Type}}">{{end}}
   {{if .Merchant}}<input type="hidden" name="m" value="{{.Merchant}}">{{end}}
   {{if .NoSavings}}<input type="hidden" name="nosave" value="1">{{end}}
-  <select name="period" aria-label="Period" onchange="this.form.from && (this.form.from.value = this.form.to.value = ''); this.form.submit()">
+  {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
+  <select name="period" aria-label="Period" onchange="if (this.form.from) { this.form.from.remove(); this.form.to.remove() } this.form.submit()">
     {{if .Custom}}<option value="" selected>{{.Current.Title}}</option>{{end}}
     {{range .Periods}}<option value="{{.Key}}" {{if and (not $.Custom) (eq .Key $.Current.Key)}}selected{{end}}>{{.Title}}</option>{{end}}
   </select>
-  {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
   {{if eq .Type "spend"}}
   <select name="cat" aria-label="Category" onchange="this.form.submit()">
     <option value="">All categories</option>
@@ -32,41 +42,88 @@
     <option {{if eq .Category "Cash"}}selected{{end}}>Cash</option>
     <option {{if eq .Category "Uncategorized"}}selected{{end}}>Uncategorized</option>
   </select>
+  {{else}}
+  <select name="dir" aria-label="Direction" onchange="this.form.submit()">
+    <option value="">In and out</option>
+    <option value="out" {{if eq .Dir "out"}}selected{{end}}>Money out</option>
+    <option value="in" {{if eq .Dir "in"}}selected{{end}}>Money in</option>
+  </select>
   {{end}}
-  <input type="search" name="q" value="{{.Query}}" placeholder="Search merchant or category" aria-label="Search" style="flex: 1; min-width: 180px">
-  <button class="btn secondary sm">{{template "icon" "search"}}Search</button>
+  <input type="search" name="q" value="{{.Query}}" placeholder="Merchant, person or category" aria-label="Search" style="flex: 1; min-width: 170px">
+  <span class="range"><input type="text" inputmode="decimal" name="min" value="{{.Min}}" placeholder="from ₸" aria-label="Amount from" size="7"><span class="muted">–</span><input type="text" inputmode="decimal" name="max" value="{{.Max}}" placeholder="to ₸" aria-label="Amount to" size="7"></span>
+  <select name="sort" aria-label="Sort" onchange="this.form.submit()">
+    <option value="new" {{if eq .Sort "new"}}selected{{end}}>Newest first</option>
+    <option value="old" {{if eq .Sort "old"}}selected{{end}}>Oldest first</option>
+    <option value="big" {{if eq .Sort "big"}}selected{{end}}>Largest first</option>
+    <option value="small" {{if eq .Sort "small"}}selected{{end}}>Smallest first</option>
+  </select>
+  <select name="group" aria-label="Group" onchange="this.form.submit()">
+    <option value="">No grouping</option>
+    {{range .Groupings}}<option value="{{.Key}}" {{if eq .Key $.Group}}selected{{end}}>By {{.Title}}</option>{{end}}
+  </select>
+  <button class="btn secondary sm">{{template "icon" "search"}}Apply</button>
 </form>
-{{if or .Merchant .Custom .Category .Query}}
+
+{{if or .Merchant .Custom .Category .Query .Min .Max .Dir}}
 <div class="toolbar" style="margin-top: -6px">
   <span class="muted small">Filters:</span>
-  {{if .Merchant}}<span class="chip">{{if .MerchantName}}{{.MerchantName}}{{else}}merchant{{end}}<a href="{{link "/ui/operations" "type" .Type "period" .Current.Key "cat" .Category "q" .Query "from" .From "to" .To "nosave" $ns}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
-  {{if .Category}}<span class="chip">{{.Category}}<a href="{{link "/ui/operations" "type" .Type "period" .Current.Key "m" .Merchant "q" .Query "from" .From "to" .To "nosave" $ns}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
-  {{if .Custom}}<span class="chip">{{.Current.Title}}<a href="{{link "/ui/operations" "type" .Type "cat" .Category "m" .Merchant "q" .Query "nosave" $ns}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
-  {{if .Query}}<span class="chip">“{{.Query}}”<a href="{{link "/ui/operations" "type" .Type "period" .Current.Key "cat" .Category "m" .Merchant "from" .From "to" .To "nosave" $ns}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Merchant}}<span class="chip">{{if .MerchantName}}{{.MerchantName}}{{else}}merchant{{end}}<a href="{{swap $st "m" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Category}}<span class="chip">{{.Category}}<a href="{{swap $st "cat" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Custom}}<span class="chip">{{.Current.Title}}<a href="{{swap $st "from" "" "to" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Query}}<span class="chip">“{{.Query}}”<a href="{{swap $st "q" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if or .Min .Max}}<span class="chip">{{if and .Min .Max}}{{.Min}} – {{.Max}} ₸{{else if .Min}}from {{.Min}} ₸{{else}}up to {{.Max}} ₸{{end}}<a href="{{swap $st "min" "" "max" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Dir}}<span class="chip">{{if eq .Dir "in"}}money in{{else}}money out{{end}}<a href="{{swap $st "dir" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
   <a class="small muted" href="/ui/operations">clear all</a>
 </div>
 {{end}}
 
-<div class="kpis" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 8px">
-  <div class="kpi"><div class="label">{{if eq .Type "spend"}}Spending{{else}}Money out{{end}}{{if .NoSavings}} · without savings{{end}}</div><div class="value num">{{kzt .Ops.Total}}</div></div>
-  <div class="kpi"><div class="label">Operations</div><div class="value num">{{len .Ops.Ops}}</div></div>
+<div class="kpis stats">
+  <div class="kpi"><div class="label">{{if eq .Type "spend"}}Spending{{if .NoSavings}} · without savings{{end}}{{else}}Money out{{end}}</div><div class="value num">{{kzt .Ops.Total}}</div></div>
   {{if .Ops.In}}<div class="kpi"><div class="label">Money in</div><div class="value num good">+{{kzt .Ops.In}}</div></div>{{end}}
-  {{if and (eq .Type "spend") .Ops.Ops}}<div class="kpi"><div class="label">Average operation</div><div class="value num">{{kzt (avg .Ops.Total (len .Ops.Ops))}}</div></div>{{end}}
+  <div class="kpi"><div class="label">Operations</div><div class="value num">{{.Stats.Count}}</div></div>
+  {{if .Stats.Count}}
+  <div class="kpi"><div class="label">Average</div><div class="value num">{{kzt .Stats.Avg}}</div><div class="note">median {{kzt .Stats.Median}}</div></div>
+  <div class="kpi"><div class="label">Largest</div><div class="value num">{{kzt .Stats.Largest}}</div><div class="note">smallest {{kzt .Stats.Smallest}}</div></div>
+  {{end}}
 </div>
 {{if and .NoSavings (eq .Type "spend")}}<p class="muted small">Savings categories are left out, as on the analytics page with the switch on.</p>{{end}}
 
+{{if .Groups}}
+<div class="card" style="margin-top: 14px">
+  <div class="card-head"><h3>By {{range .Groupings}}{{if eq .Key $.Group}}{{.Title}}{{end}}{{end}}</h3><a class="link" href="{{swap $st "group" ""}}">hide</a></div>
+  <div class="scroll"><table class="data">
+    <thead><tr><th></th><th class="hide-narrow" style="width: 30%"></th><th class="num">Out</th>{{if .Ops.In}}<th class="num">In</th>{{end}}<th class="num">Share</th><th class="num">Ops</th></tr></thead>
+    <tbody>
+    {{range .Groups}}
+    <tr>
+      <td>{{if not .From.IsZero}}<a href="{{swap $st "from" (ymd .From) "to" (lastDay .To) "period" "" "group" ""}}">{{.Label}}</a>{{else if .Merchant}}<a href="{{swap $st "m" .Merchant "group" ""}}">{{.Label}}</a>{{else if and .Category (eq $.Type "spend")}}<a href="{{swap $st "cat" .Category "group" ""}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</td>
+      <td class="hide-narrow"><span class="mini" style="width: {{width .Pct}}"></span></td>
+      <td class="num">{{kzt .Out}}</td>{{if $.Ops.In}}<td class="num good">{{if .In}}+{{kzt .In}}{{end}}</td>{{end}}<td class="num muted">{{pct .Share}}</td><td class="num">{{.Count}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
+
 {{if .Days}}
   {{$cats := .Categories}}{{$back := .Back}}{{$type := .Type}}
+  {{if .Flat}}
+  <div class="ops" style="margin-top: 14px">
+    {{range .Days}}{{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type "Date" true)}}{{end}}{{end}}
+  </div>
+  {{else}}
   {{range .Days}}
   <div class="day-head"><span>{{dayTitle .Date now}}</span>{{if .Total}}<span class="num">{{kzt .Total}}</span>{{end}}</div>
   <div class="ops">
     {{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type)}}{{end}}
   </div>
   {{end}}
+  {{end}}
   {{if .More}}<p style="text-align: center; margin-top: 18px"><a class="btn secondary" href="{{.More}}">Show more</a> <span class="muted small">{{.Shown}} of {{len .Ops.Ops}} shown</span></p>{{end}}
 {{else}}
-  <div class="card empty">{{template "icon" "search"}}<div>Nothing matches these filters.</div></div>
+  <div class="card empty" style="margin-top: 14px">{{template "icon" "search"}}<div>Nothing matches these filters.</div></div>
 {{end}}
-<p class="muted small" style="margin-top: 18px">The ✎ button changes a category. Statement operations without a time show only the date. Spending totals here match the analytics page for the same period, category or merchant.</p>
+<p class="muted small" style="margin-top: 18px">The ✎ button changes a category. Spending totals here match the analytics page for the same period, category or merchant. Amount filters compare amounts without their sign.</p>
 {{end}}
 {{template "foot" .}}

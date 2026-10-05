@@ -196,7 +196,13 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if local != nil {
 		settings.Model, settings.Ollama = local, llm.NewOllama(cfg.AnalysisLLMURL)
 	}
-	w.WithSettings(settings).Register(mux)
+	// Requests in plain words on the operations page: the local model keeps data at home;
+	// without it the bot's model is used. Only the request and category names are sent.
+	ai := localProvider
+	if ai == nil {
+		ai = provider
+	}
+	w.WithAI(ai).WithSettings(settings).Register(mux)
 	if cfg.WebPassword == "" && !isLoopback(cfg.Addr) {
 		log.Warn("web ui WITHOUT password is open to the network", "addr", cfg.Addr)
 	}
