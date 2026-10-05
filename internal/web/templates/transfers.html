@@ -29,15 +29,33 @@
     <button class="btn sm">Save</button>
   </div>
 </form>
+{{$st := .State}}
 <h2 class="section">Operations</h2>
-<div class="ops">
-  {{range .Ops}}
-  <div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
-    <div class="op-main"><span class="op-title" style="font-weight: 500">{{if lt .AmountMinor 0}}Received{{else}}Sent{{end}}</span><div class="op-meta">{{date .OccurredAt}}{{with .Note}} · {{.}}{{end}}</div></div>
-    <div class="op-amt {{if lt .AmountMinor 0}}in{{end}}">{{if lt .AmountMinor 0}}+{{kzt (neg .AmountMinor)}}{{else}}−{{kzt .AmountMinor}}{{end}}</div>
+{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask about this person: between 120k and 160k · only what I received · in 2026 · largest first")}}
+<form class="toolbar" method="get" action="/ui/transfers">
+  <input type="hidden" name="name" value="{{.Name}}">
+  <div class="seg" role="group" aria-label="Direction">
+    <a class="{{if not .Dir}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" ""}}">Both ways</a>
+    <a class="{{if eq .Dir "out"}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" "out"}}">Sent</a>
+    <a class="{{if eq .Dir "in"}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" "in"}}">Received</a>
   </div>
-  {{end}}
-</div>
+  {{if .Dir}}<input type="hidden" name="dir" value="{{.Dir}}">{{end}}
+  {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
+  {{if .Periods}}<select name="period" aria-label="Period" onchange="if (this.form.from) { this.form.from.remove(); this.form.to.remove() } this.form.submit()">
+    {{if .Custom}}<option value="" selected>{{.Current.Title}}</option>{{end}}
+    {{range .Periods}}<option value="{{.Key}}" {{if and (not $.Custom) (eq .Key $.Current.Key)}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>{{end}}
+  <span class="range" title="Each transfer"><input type="text" inputmode="decimal" name="min" value="{{.Min}}" placeholder="amount from ₸" aria-label="Amount from" size="9"><span class="muted">–</span><input type="text" inputmode="decimal" name="max" value="{{.Max}}" placeholder="to ₸" aria-label="Amount to" size="7"></span>
+  <select name="sort" aria-label="Sort" onchange="this.form.submit()">
+    <option value="" {{if not .Sort}}selected{{end}}>Newest first</option>
+    <option value="old" {{if eq .Sort "old"}}selected{{end}}>Oldest first</option>
+    <option value="big" {{if eq .Sort "big"}}selected{{end}}>Largest first</option>
+    <option value="small" {{if eq .Sort "small"}}selected{{end}}>Smallest first</option>
+  </select>
+  <button class="btn secondary sm">{{template "icon" "search"}}Apply</button>
+  {{if or .Min .Max .Dir .Custom}}<a class="small muted" href="{{link "/ui/transfers" "name" .Name}}">clear</a>{{end}}
+</form>
+{{template "found" .}}
 {{else}}
 {{$st := .State}}
 <div class="page-head"><div><h1>Transfers</h1><div class="sub">People you sent money to or received it from · {{.Total}} in all{{if not .Empty}} · {{.Current.Title}}{{end}}</div></div>
@@ -109,6 +127,37 @@
 {{else}}
 <div class="card empty">{{template "icon" "people"}}<div>Nobody matches these filters.</div></div>
 {{end}}
+{{if or .PerOp .Query}}{{if .Found}}
+<h2 class="section">Matching transfers</h2>
+{{template "found" .}}
+{{end}}{{end}}
 {{end}}
 {{end}}
 {{template "foot" .}}
+
+{{/* The operations found with a person or people: date, who, direction, amount. */}}
+{{define "found"}}
+{{if .Found}}
+<div class="kpis stats" style="margin-bottom: 12px">
+  <div class="kpi"><div class="label">Found</div><div class="value num">{{len .Found}}</div><div class="note">{{if .PerOp}}each {{if and .Min .Max}}{{.Min}} – {{.Max}} ₸{{else if .Min}}from {{.Min}} ₸{{else}}up to {{.Max}} ₸{{end}}{{else}}{{.Current.Title}}{{end}}</div></div>
+  <div class="kpi"><div class="label">Sent</div><div class="value num">{{kzt .Sent}}</div></div>
+  <div class="kpi"><div class="label">Received</div><div class="value num good">{{kzt .Received}}</div></div>
+</div>
+<div class="ops">
+  {{$name := .Name}}
+  {{range $i, $o := .Found}}{{if lt $i $.FoundShown}}
+  <div class="op" style="grid-template-columns: {{if $name}}minmax(0, 1fr){{else}}36px minmax(0, 1fr){{end}} auto">
+    {{if not $name}}<span class="ava" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>{{end}}
+    <div class="op-main">
+      {{if $name}}<span class="op-title" style="font-weight: 500">{{if lt $o.Amount 0}}Received{{else}}Sent{{end}}</span>{{else}}<a class="op-title" href="{{link "/ui/transfers" "name" $o.Merchant}}">{{$o.Merchant}}</a>{{end}}
+      <div class="op-meta"><span>{{wday $o.At}} {{date $o.At}}</span>{{if not $name}}<span class="tag">{{if lt $o.Amount 0}}received{{else}}sent{{end}}</span>{{end}}{{range $o.Categories}}<span class="tag save">{{.}}</span>{{end}}</div>
+    </div>
+    <div class="op-amt {{if lt $o.Amount 0}}in{{end}}">{{if lt $o.Amount 0}}+{{kzt (abs $o.Amount)}}{{else}}−{{kzt $o.Amount}}{{end}}</div>
+  </div>
+  {{end}}{{end}}
+</div>
+{{if gt (len .Found) .FoundShown}}<p class="muted small" style="text-align: center">{{.FoundShown}} of {{len .Found}} shown — narrow the filters or <a href="{{link "/ui/operations" "type" "transfers" "min" .Min "max" .Max "dir" .Dir "q" .Query}}">open them as operations</a>.</p>{{end}}
+{{else}}
+<div class="card empty">{{template "icon" "search"}}<div>No transfers match{{if .PerOp}} this amount{{end}}.</div></div>
+{{end}}
+{{end}}

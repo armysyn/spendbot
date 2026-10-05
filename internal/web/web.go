@@ -600,7 +600,11 @@ type transfersData struct {
 	Total      int // total number of people
 	Name       string
 	Person     *store.Counterparty
-	Ops        []store.Tx
+	// Found are the operations matching the filters; FoundSent and FoundIn are their sums.
+	Found              []analytics.Op
+	FoundShown         int
+	FoundSent, FoundIn int64
+	PerOp              bool // an amount filter is on: the list of found operations matters
 	// the list of people
 	Empty          bool
 	People         []analytics.Person
@@ -643,16 +647,11 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 				d.Person = &all[i]
 			}
 		}
-		if d.Ops, err = s.st.CounterpartyOps(ctx, d.Name); err != nil {
-			s.fail(w, err)
-			return
-		}
 		if d.Categories, err = s.st.Categories(ctx); err != nil {
 			s.fail(w, err)
 			return
 		}
-		s.show(w, r, "transfers.html", d.Name, "transfers", &d)
-		return
+		d.Query = ""
 	}
 	d.Cats = map[string]string{}
 	for _, c := range all {
@@ -673,7 +672,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Periods = analytics.Periods(first, last)
 	of, custom := filterFrom(q, d.Periods, s.loc)
-	f := analytics.PeopleFilter{Period: of.Period, Dir: of.Dir, Query: d.Query, Min: of.Min, Max: of.Max,
+	f := analytics.PeopleFilter{Period: of.Period, Dir: of.Dir, Query: d.Query, Name: d.Name, Min: of.Min, Max: of.Max,
 		New: q.Get("new") == "1", Sort: q.Get("sort")}
 	f.TimesMin, _ = strconv.Atoi(q.Get("nmin"))
 	f.TimesMax, _ = strconv.Atoi(q.Get("nmax"))
@@ -701,10 +700,20 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 		sq.Del(k)
 	}
 	d.State = sq.Encode()
-	d.People = analytics.People(rows, f)
+	res := analytics.People(rows, f)
+	d.People, d.Found = res.People, res.Ops
 	for _, p := range d.People {
 		d.Sent += p.Sent
 		d.Received += p.Received
+	}
+	d.PerOp = f.Min > 0 || f.Max > 0
+	d.FoundShown = min(len(d.Found), 300)
+	if d.Name != "" {
+		d.FoundShown = len(d.Found)
+	}
+	title := "Transfers"
+	if d.Name != "" {
+		title = d.Name
 	}
 	limit := peoplePage
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > limit {
@@ -716,7 +725,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 		mq.Set("limit", strconv.Itoa(limit+peoplePage))
 		d.More = "/ui/transfers?" + mq.Encode()
 	}
-	s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
+	s.show(w, r, "transfers.html", title, "transfers", &d)
 }
 
 // transferCategory makes transfers to a person spending in a category or turns them back into non-spending.

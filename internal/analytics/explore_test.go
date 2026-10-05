@@ -1,10 +1,14 @@
 package analytics_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	. "spendbot/internal/analytics"
+	"spendbot/internal/kaspi"
+	"spendbot/internal/merchant"
+	"spendbot/internal/store"
 )
 
 // Drill-down must agree with the charts: the operations of a category, a merchant or a
@@ -165,5 +169,48 @@ func TestRepeatFilter(t *testing.T) {
 	tr := Operations(rows, Filter{Period: p, Type: TypeTransfers, Dir: DirOut, Repeat: RepeatOnce, Min: 20_000 * tg, Max: 200_000 * tg})
 	if len(tr.Ops) != 1 || tr.Ops[0].Merchant != "Aigerim A." {
 		t.Errorf("transfers sent once: %+v", tr.Ops)
+	}
+}
+
+// On the transfers page an amount range checks each transfer, not a person's total, and the
+// counts for "only once" still see every transfer.
+func TestPeoplePerOperation(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	add := func(key, who string, day int, amount int64, kind string) {
+		_, _, err := st.InsertTx(ctx, store.Tx{ExternalKey: key, OccurredAt: time.Date(2026, 9, day, 12, 0, 0, 0, almaty),
+			AmountMinor: amount * tg, Currency: "KZT", MerchantRaw: who, MerchantNorm: merchant.Normalize(who), Kind: kind,
+			Source: store.SourceImport, Status: store.StatusInfo, CreatedAt: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("1", "Anna A.", 1, 10_000, kaspi.Transfer)
+	add("2", "Anna A.", 2, 130_000, kaspi.Transfer)
+	add("3", "Anna A.", 3, -150_000, kaspi.TopUp)
+	add("4", "Boris B.", 4, 300_000, kaspi.Transfer)
+	add("5", "Vera V.", 5, 140_000, kaspi.Transfer)
+	rows := ledger(t, st)
+	p := Period{From: time.Date(2026, 9, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty)}
+
+	// Boris's 300,000 is out of range although Anna's total (140,000 sent) would not matter either
+	res := People(rows, PeopleFilter{Period: p, Min: 120_000 * tg, Max: 160_000 * tg})
+	if len(res.People) != 2 || len(res.Ops) != 3 {
+		t.Fatalf("people %+v ops %+v", res.People, res.Ops)
+	}
+	for _, pp := range res.People {
+		if pp.Name == "Anna A." && (pp.Sent != 130_000*tg || pp.SentN != 1 || pp.Received != 150_000*tg) {
+			t.Errorf("Anna's sums cover only the matching transfers: %+v", pp)
+		}
+	}
+	// one person, sent only
+	anna := People(rows, PeopleFilter{Period: p, Name: "Anna A.", Dir: DirOut, Min: 120_000 * tg, Max: 160_000 * tg})
+	if len(anna.Ops) != 1 || anna.Ops[0].Amount != 130_000*tg {
+		t.Errorf("Anna, sent 120–160k: %+v", anna.Ops)
+	}
+	// "sent only once, 120–160k": Anna sent twice, so only Vera
+	once := People(rows, PeopleFilter{Period: p, Dir: DirOut, Min: 120_000 * tg, Max: 160_000 * tg, TimesMin: 1, TimesMax: 1})
+	if len(once.People) != 1 || once.People[0].Name != "Vera V." {
+		t.Errorf("once: %+v", once.People)
 	}
 }

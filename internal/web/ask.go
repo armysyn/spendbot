@@ -629,7 +629,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, page string) {
 	if err != nil {
 		q = url.Values{}
 	}
-	for _, k := range []string{"msg", "limit", "ask", "name"} {
+	for _, k := range []string{"msg", "limit", "ask"} {
 		q.Del(k)
 	}
 	back := func(msg string) {
