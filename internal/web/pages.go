@@ -21,9 +21,11 @@ import (
 
 // Page is what the layout needs: the title, the active menu item and the number of open questions.
 type Page struct {
-	Title string
-	Nav   string
-	Open  int // merchants waiting for an answer in open batches
+	Title  string
+	Nav    string
+	Open   int    // merchants waiting for an answer in open batches
+	Issues int    // open issues
+	Path   string // this page with its query, for "report a problem"
 }
 
 func (p *Page) page() *Page { return p }
@@ -45,7 +47,8 @@ func (s *Server) openQuestions(ctx context.Context) int {
 
 func (s *Server) show(w http.ResponseWriter, r *http.Request, name, title, nav string, data pager) {
 	p := data.page()
-	p.Title, p.Nav, p.Open = title, nav, s.openQuestions(r.Context())
+	p.Title, p.Nav, p.Open, p.Path = title, nav, s.openQuestions(r.Context()), r.URL.RequestURI()
+	p.Issues, _, _ = s.st.IssueCounts(r.Context())
 	s.render(w, name, data)
 }
 

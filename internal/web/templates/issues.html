@@ -1,0 +1,72 @@
+{{template "head" .Page}}
+{{$st := .State}}
+<div class="page-head">
+  <div>
+    <h1>Issues</h1>
+    <div class="sub">Problems and wishes about spendbot · {{.OpenN}} open · {{.ClosedN}} closed · kept on this computer for now</div>
+  </div>
+  <div class="actions"><a class="btn sm" href="{{link "/ui/issues" "new" "1"}}#new">{{template "icon" "plus"}}New issue</a></div>
+</div>
+{{template "flash" .Flash}}
+
+<details class="card" id="new" {{if .New}}open{{end}} style="margin-bottom: 14px">
+  <summary style="cursor: pointer; font-weight: 600; list-style: none; display: flex; gap: 8px; align-items: center">{{template "icon" "plus"}}New issue</summary>
+  <form method="post" action="/ui/issues" style="display: grid; gap: 12px; margin-top: 14px">
+    <div class="seg" role="radiogroup" aria-label="Kind" style="width: fit-content">
+      <label style="display: contents"><input type="radio" name="kind" value="bug" class="hidden-input" {{if not .New}}{{end}}><span class="kind-opt">{{template "icon" "bug"}}Problem</span></label>
+      <label style="display: contents"><input type="radio" name="kind" value="idea" class="hidden-input" checked><span class="kind-opt">{{template "icon" "bulb"}}Idea</span></label>
+    </div>
+    <div class="field"><label for="it">Title</label><input id="it" type="text" name="title" maxlength="140" required placeholder="What is wrong, or what you wish for" {{if .New}}autofocus{{end}}></div>
+    <div class="field"><label for="ib">Details</label><textarea id="ib" name="body" rows="6" placeholder="What you did, what you expected, what happened instead. Or how the feature should work."></textarea></div>
+    <div class="actions">
+      <div class="field"><label for="ip">Priority</label><select id="ip" name="priority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></div>
+      <div class="field" style="flex: 1; min-width: 220px"><label for="ipg">Page it is about (optional)</label><input id="ipg" type="text" name="page" value="{{.NewPage}}" placeholder="/ui/income"></div>
+    </div>
+    <div><button class="btn">Save issue</button></div>
+  </form>
+</details>
+
+<form class="toolbar" method="get" action="/ui/issues">
+  <div class="seg" role="group" aria-label="Status">
+    <a class="{{if eq .Status "open"}}on{{end}}" href="{{swapAt "/ui/issues" $st "status" ""}}">Open · {{.OpenN}}</a>
+    <a class="{{if eq .Status "closed"}}on{{end}}" href="{{swapAt "/ui/issues" $st "status" "closed"}}">Closed · {{.ClosedN}}</a>
+    <a class="{{if eq .Status "all"}}on{{end}}" href="{{swapAt "/ui/issues" $st "status" "all"}}">All</a>
+  </div>
+  {{if ne .Status "open"}}<input type="hidden" name="status" value="{{.Status}}">{{end}}
+  <select name="kind" aria-label="Kind" onchange="this.form.submit()">
+    <option value="">Problems and ideas</option>
+    <option value="bug" {{if eq .Kind "bug"}}selected{{end}}>Problems</option>
+    <option value="idea" {{if eq .Kind "idea"}}selected{{end}}>Ideas</option>
+  </select>
+  <select name="priority" aria-label="Priority" onchange="this.form.submit()">
+    <option value="">Any priority</option>
+    <option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option>
+    <option value="normal" {{if eq .Priority "normal"}}selected{{end}}>Normal</option>
+    <option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option>
+  </select>
+  <input type="search" name="q" value="{{.Query}}" placeholder="Search issues" aria-label="Search" style="flex: 1; min-width: 180px">
+  <button class="btn secondary sm">{{template "icon" "search"}}Search</button>
+</form>
+
+{{if .Issues}}
+<div class="ops">
+  {{range .Issues}}
+  <a class="op issue-row" href="/ui/issues/{{.ID}}" style="text-decoration: none; grid-template-columns: 36px minmax(0, 1fr) auto">
+    <span class="ava issue-ic {{.Kind}}{{if eq .Status "closed"}} done{{end}}" aria-hidden="true">{{if eq .Status "closed"}}{{template "icon" "check"}}{{else if eq .Kind "bug"}}{{template "icon" "bug"}}{{else}}{{template "icon" "bulb"}}{{end}}</span>
+    <div class="op-main">
+      <span class="op-title">{{.Title}}</span>
+      <div class="op-meta">
+        <span>#{{.ID}} · {{if eq .Kind "bug"}}problem{{else}}idea{{end}} · opened {{datetime .CreatedAt}}{{if .ClosedAt}} · closed {{datetime .ClosedAt}}{{end}}</span>
+        {{if eq .Priority "high"}}<span class="pill up">high</span>{{else if eq .Priority "low"}}<span class="tag">low</span>{{end}}
+        {{with .Page}}<span class="tag">{{.}}</span>{{end}}
+      </div>
+    </div>
+    <span class="muted small">{{if .CommentCount}}{{.CommentCount}} {{plural .CommentCount "comment" "comments"}}{{end}}</span>
+  </a>
+  {{end}}
+</div>
+{{else}}
+<div class="card empty">{{template "icon" "flag"}}<div>{{if .Query}}Nothing matches “{{.Query}}”.{{else if eq .Status "open"}}No open issues. Found a problem or have an idea? <a href="{{link "/ui/issues" "new" "1"}}#new">Write it down</a>.{{else}}Nothing here.{{end}}</div></div>
+{{end}}
+<p class="muted small" style="margin-top: 14px">Issues stay in the local database. Later they can be copied to GitHub issues; each will remember its GitHub number.</p>
+{{template "foot" .}}
