@@ -94,12 +94,9 @@ func changeOf(c analytics.Change) change {
 	return out
 }
 
-// bounds are the first and last days of the data: of spending, or of any operation when
-// there is no spending yet.
+// bounds are the first and last days of any operation: transfers after the last purchase
+// must still be inside "all time" on the operations and transfers pages.
 func bounds(rows []store.LedgerRow) (first, last time.Time, ok bool) {
-	if first, last, ok = analytics.Bounds(rows); ok {
-		return first, last, ok
-	}
 	for _, r := range rows {
 		if !ok || r.At.Before(first) {
 			first = r.At
@@ -804,7 +801,10 @@ func cols(bars []analytics.Bar, target, nosave, label string, short bool) column
 
 // swap is the operations page with the current filters (an encoded query) where the given keys
 // are replaced; an empty value removes a key.
-func swap(state string, kv ...string) string {
+func swap(state string, kv ...string) string { return swapAt("/ui/operations", state, kv...) }
+
+// swapAt is swap for any page.
+func swapAt(path, state string, kv ...string) string {
 	q, _ := url.ParseQuery(state)
 	for i := 0; i+1 < len(kv); i += 2 {
 		if kv[i+1] == "" {
@@ -814,7 +814,7 @@ func swap(state string, kv ...string) string {
 		}
 	}
 	if len(q) == 0 {
-		return "/ui/operations"
+		return path
 	}
-	return "/ui/operations?" + q.Encode()
+	return path + "?" + q.Encode()
 }

@@ -39,6 +39,8 @@ type intent struct {
 	Category   string
 	Text       string
 	Repeat     string
+	TimesMin   int // number of operations with a person, the transfers page only; 0 — no bound
+	TimesMax   int
 	Sort       string
 	Group      string
 	Clear      []string
@@ -92,8 +94,45 @@ func numValue(digits, unit string) (float64, bool) {
 	return v * unitScale(unit), true
 }
 
+// timesRe finds counts: "больше 5 раз", "at least 3 times", "2 раза".
+var timesRe = regexp.MustCompile(`(?i)(больше|более|свыше|over|more than|не меньше|at least|от|меньше|менее|under|less than|fewer than|не больше|at most|до)?\s*(\d+)\s*(раза|раз|times|переводов|перевода|переводы|перевод|операций|операции|операция|платежей|платежа|transfers|transfer|operations|operation|payments)([^\p{L}]|$)`)
+
+// yearRe finds a whole year: "в 2026 году", "за 2025", "in 2026".
+var yearRe = regexp.MustCompile(`(?i)(?:^|\s)(?:в|за|in|during|for)\s+((?:19|20)\d\d)(?:\s*(?:году|год|г\.?))?(?:[^\d]|$)`)
+
+// countIntent reads counts and blanks them out, so "5 раз" is not read as 5 ₸.
+func countIntent(in *intent, text string) string {
+	for _, m := range timesRe.FindAllStringSubmatchIndex(text, -1) {
+		n, err := strconv.Atoi(text[m[4]:m[5]])
+		if err != nil || n <= 0 || n > 10000 {
+			continue
+		}
+		switch strings.ToLower(sub(text, m[2], m[3])) {
+		case "больше", "более", "свыше", "over", "more than":
+			in.TimesMin, in.TimesMax = n+1, 0
+		case "не меньше", "at least", "от":
+			in.TimesMin, in.TimesMax = n, 0
+		case "меньше", "менее", "under", "less than", "fewer than":
+			in.TimesMin, in.TimesMax = 0, max(n-1, 1)
+		case "не больше", "at most", "до":
+			in.TimesMin, in.TimesMax = 0, n
+		default:
+			in.TimesMin, in.TimesMax = n, n
+		}
+		in.understood = true
+		text = text[:m[0]] + strings.Repeat(" ", m[7]-m[0]) + text[m[7]:]
+	}
+	return text
+}
+
 func ruleIntent(text string) intent {
 	in := newIntent()
+	text = countIntent(&in, text)
+	if m := yearRe.FindStringSubmatchIndex(text); m != nil {
+		y := text[m[2]:m[3]]
+		in.From, in.To, in.understood = y+"-01-01", y+"-12-31", true
+		text = text[:m[2]] + strings.Repeat(" ", m[3]-m[2]) + text[m[3]:]
+	}
 	low := strings.ToLower(text)
 	var nums []number
 	for _, m := range numRe.FindAllStringSubmatchIndex(text, -1) {
@@ -142,6 +181,14 @@ func ruleIntent(text string) intent {
 	}
 	set := func(field *string, v string) { *field, in.understood = v, true }
 	switch {
+	case has("минус", "долг", "должен", "должна", "должны", "в плюсе", "balance", "owe"):
+		set(&in.Sort, analytics.PeopleBalance)
+	case has("чаще", "most often", "most transfers", "больше всего раз", "больше всего переводов"):
+		set(&in.Sort, analytics.PeopleCount)
+	case has("больше всего", "most"):
+		if in.Min < 0 && in.Max < 0 {
+			set(&in.Sort, analytics.SortBig)
+		}
 	case has("крупн", "больш", "дорог", "biggest", "largest", "expensive"):
 		if in.Min < 0 && in.Max < 0 || has("сначала", "first", "сортир", "sort") {
 			set(&in.Sort, analytics.SortBig)
@@ -166,9 +213,11 @@ func ruleIntent(text string) intent {
 		set(&in.Group, "merchant")
 	}
 	switch {
-	case has("входящ", "поступлен", "получил", "пришл", "incoming", "received", "money in"):
+	case has("входящ", "поступлен", "получил", "пришл", "присл", "скинул мне", "скинули мне", "перевел мне", "перевёл мне", "перевели мне", "incoming", "received", "sent me", "money in"):
 		set(&in.Dir, analytics.DirIn)
-	case has("исходящ", "отправил", "перевел", "перевёл", "outgoing", "money out"):
+	case has("исходящ", "отправ", "перевел", "перевёл", "outgoing", "money out"):
+		set(&in.Dir, analytics.DirOut)
+	case has("кому", "to whom"):
 		set(&in.Dir, analytics.DirOut)
 	}
 	switch {
@@ -209,7 +258,7 @@ Keys (leave a key out when the request does not mention it):
 The request may be in Russian, Kazakh or English. It refines the current filters: keep what it does not mention.
 Only fill a key the request clearly asks for: never add a period, sorting or grouping on your own.`
 
-func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, cats []string) (intent, error) {
+func (s *Server) modelIntent(ctx context.Context, system, text string, cur url.Values, cats []string) (intent, error) {
 	in := newIntent()
 	user, _ := json.Marshal(map[string]any{
 		"request":         text,
@@ -219,7 +268,7 @@ func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, c
 	})
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	raw, err := s.ai.JSON(ctx, askSystem, string(user))
+	raw, err := s.ai.JSON(ctx, system, string(user))
 	if err != nil {
 		return in, err
 	}
@@ -251,6 +300,14 @@ func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, c
 	in.From, in.To = str("from"), str("to")
 	in.Kind, in.Dir, in.Category, in.Text, in.Sort, in.Group = str("kind"), str("direction"), str("category"), str("text"), str("sort"), str("group")
 	in.Repeat = str("repeat")
+	count := func(k string) int {
+		n, err := strconv.Atoi(strings.SplitN(str(k), ".", 2)[0])
+		if err != nil || n < 0 || n > 10000 {
+			return 0
+		}
+		return n
+	}
+	in.TimesMin, in.TimesMax = count("times_min"), count("times_max")
 	if cl, ok := m["clear"].([]any); ok {
 		for _, c := range cl {
 			if c, ok := c.(string); ok {
@@ -264,12 +321,13 @@ func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, c
 // Cues a request must contain for the model's answer to set a filter: a small model sometimes
 // adds a grouping, a sort or today's date nobody asked for.
 var cues = map[string][]string{
-	"sort":      {"сначала", "сортир", "отсорт", "крупн", "самы", "наибол", "мелк", "дорог", "дешев", "стар", "нов", "первы", "first", "sort", "big", "larg", "small", "old", "new", "expensive", "cheap", "top", "топ"},
+	"sort":      {"чаще", "баланс", "долг", "должн", "алфавит", "имени", "often", "balance", "owe", "name", "сначала", "сортир", "отсорт", "крупн", "самы", "наибол", "мелк", "дорог", "дешев", "стар", "нов", "первы", "first", "sort", "big", "larg", "small", "old", "new", "expensive", "cheap", "top", "топ"},
 	"group":     {"по ", "сгрупп", "группир", "разбей", "разбив", "помесяч", "понедел", "by ", "group", "per ", "monthly", "weekly", "daily", "breakdown"},
 	"period":    {"январ", "феврал", "март", "апрел", "мая", "май", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр", "вчера", "сегодня", "недел", "месяц", "год", "дней", "день", "дня", "прошл", "этот", "этом", "текущ", "с ", "после", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "today", "yesterday", "week", "month", "year", "day", "since", "after", "before", "last", "this"},
-	"direction": {"получ", "входящ", "пришл", "приход", "поступ", "отправ", "перев", "исходящ", "расход", "receiv", "incoming", "sent", "send", "outgoing", " in", " out"},
+	"direction": {"присл", "кому", "мне", "получ", "входящ", "пришл", "приход", "поступ", "отправ", "перев", "исходящ", "расход", "receiv", "incoming", "sent", "send", "outgoing", " in", " out"},
 	"kind":      {"перевод", "трат", "покуп", "расход", "все операц", "всё", "transfer", "spend", "purchase", "all "},
 	"repeat":    {"впервые", "перв", "один раз", "единожды", "однократ", "нов", "first", "once", "single", "new"},
+	"times":     {"раз", "times", "once", "один", "single", "перевод", "операц", "платеж", "transfer", "operation", "payment"},
 	"clear":     {"сброс", "очист", "убери", "без ", "удали", "remove", "clear", "reset", "without", "drop"},
 }
 
@@ -309,6 +367,9 @@ func ground(in intent, text string) intent {
 	if !hasCue(text, "repeat") {
 		in.Repeat = ""
 	}
+	if !hasCue(text, "times") {
+		in.TimesMin, in.TimesMax = 0, 0
+	}
 	if !hasCue(text, "clear") {
 		in.Clear = nil
 	}
@@ -323,7 +384,8 @@ func ground(in intent, text string) intent {
 func describe(q url.Values) map[string]string {
 	out := map[string]string{}
 	for k, name := range map[string]string{"type": "kind", "period": "period", "from": "from", "to": "to", "cat": "category",
-		"m": "merchant", "q": "text", "min": "min_amount", "max": "max_amount", "dir": "direction", "repeat": "repeat", "sort": "sort", "group": "group"} {
+		"m": "merchant", "q": "text", "min": "min_amount", "max": "max_amount", "dir": "direction", "repeat": "repeat", "sort": "sort", "group": "group",
+		"nmin": "times_min", "nmax": "times_max", "new": "repeat_first"} {
 		if v := q.Get(k); v != "" {
 			out[name] = v
 		}
@@ -335,9 +397,9 @@ func describe(q url.Values) map[string]string {
 
 func tenge(t int64) string { return strconv.FormatInt(t/100, 10) }
 
-// apply puts an intent on top of the query and returns what changed, in words.
-func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string {
-	var done []string
+// applyCommon puts what both pages share on top of the query — clearing, amount, period,
+// direction, text — and returns what changed, in words. Other keys to clear are returned.
+func (s *Server) applyCommon(q url.Values, in intent) (done, rest []string) {
 	for _, c := range in.Clear {
 		switch c {
 		case "amount":
@@ -347,19 +409,14 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 			q.Del("period")
 			q.Del("from")
 			q.Del("to")
-		case "category":
-			q.Del("cat")
 		case "text":
 			q.Del("q")
-		case "merchant":
-			q.Del("m")
 		case "direction":
 			q.Del("dir")
-		case "repeat":
-			q.Del("repeat")
-		case "sort", "group":
-			q.Del(c)
+		case "sort":
+			q.Del("sort")
 		default:
+			rest = append(rest, c)
 			continue
 		}
 		done = append(done, "removed "+c)
@@ -403,6 +460,33 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 		q.Set("to", to.Format("2006-01-02"))
 		done = append(done, from.Format("2 Jan 2006")+" – "+to.Format("2 Jan 2006"))
 	}
+	if in.Dir == analytics.DirIn || in.Dir == analytics.DirOut {
+		q.Set("dir", in.Dir)
+		done = append(done, map[string]string{"in": "money in", "out": "money out"}[in.Dir])
+	}
+	if t := strings.Join(strings.Fields(in.Text), " "); t != "" && len([]rune(t)) <= 60 {
+		q.Set("q", t)
+		done = append(done, "“"+t+"”")
+	}
+	return done, rest
+}
+
+// apply puts an intent on top of the operations page query and returns what changed, in words.
+func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string {
+	done, rest := s.applyCommon(q, in)
+	for _, c := range rest {
+		switch c {
+		case "category":
+			q.Del("cat")
+		case "merchant":
+			q.Del("m")
+		case "repeat", "group":
+			q.Del(c)
+		default:
+			continue
+		}
+		done = append(done, "removed "+c)
+	}
 	if in.Category != "" {
 		name := ""
 		for _, c := range cats {
@@ -431,13 +515,8 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 			done = append(done, map[string]string{"spend": "spending", "transfers": "transfers", "all": "all operations"}[in.Kind])
 		}
 	}
-	switch in.Dir {
-	case analytics.DirIn, analytics.DirOut:
-		q.Set("dir", in.Dir)
-		if in.Dir == analytics.DirIn && q.Get("type") == analytics.TypeSpend || in.Dir == analytics.DirIn && q.Get("type") == "" {
-			q.Set("type", analytics.TypeAll) // money in is never spending
-		}
-		done = append(done, map[string]string{"in": "money in", "out": "money out"}[in.Dir])
+	if q.Get("dir") == analytics.DirIn && (q.Get("type") == analytics.TypeSpend || q.Get("type") == "") {
+		q.Set("type", analytics.TypeAll) // money in is never spending
 	}
 	switch in.Repeat {
 	case analytics.RepeatFirst:
@@ -446,10 +525,6 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 	case analytics.RepeatOnce:
 		q.Set("repeat", in.Repeat)
 		done = append(done, "only one operation with them ever")
-	}
-	if t := strings.Join(strings.Fields(in.Text), " "); t != "" && len([]rune(t)) <= 60 {
-		q.Set("q", t)
-		done = append(done, "“"+t+"”")
 	}
 	if slices.Contains([]string{analytics.SortNew, analytics.SortOld, analytics.SortBig, analytics.SortSmall}, in.Sort) {
 		q.Set("sort", in.Sort)
@@ -464,20 +539,97 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 	return done
 }
 
+// applyPeople puts an intent on top of the transfers page query: amounts and counts are
+// totals per person on the chosen side.
+func (s *Server) applyPeople(q url.Values, in intent) []string {
+	done, rest := s.applyCommon(q, in)
+	for _, c := range rest {
+		switch c {
+		case "repeat", "times":
+			q.Del("new")
+			q.Del("nmin")
+			q.Del("nmax")
+		default:
+			continue
+		}
+		done = append(done, "removed "+c)
+	}
+	switch in.Repeat {
+	case analytics.RepeatOnce:
+		in.TimesMin, in.TimesMax = 1, 1
+	case analytics.RepeatFirst:
+		q.Set("new", "1")
+		done = append(done, "people new in the period")
+	}
+	if in.TimesMax > 0 && in.TimesMin > in.TimesMax {
+		in.TimesMin, in.TimesMax = in.TimesMax, in.TimesMin
+	}
+	switch {
+	case in.TimesMin > 0 && in.TimesMin == in.TimesMax:
+		q.Set("nmin", strconv.Itoa(in.TimesMin))
+		q.Set("nmax", strconv.Itoa(in.TimesMax))
+		done = append(done, fmt.Sprintf("exactly %d %s", in.TimesMin, plural(in.TimesMin, "operation", "operations")))
+	case in.TimesMin > 0 || in.TimesMax > 0:
+		q.Del("nmin")
+		q.Del("nmax")
+		if in.TimesMin > 0 {
+			q.Set("nmin", strconv.Itoa(in.TimesMin))
+			done = append(done, fmt.Sprintf("at least %d operations", in.TimesMin))
+		}
+		if in.TimesMax > 0 {
+			q.Set("nmax", strconv.Itoa(in.TimesMax))
+			done = append(done, fmt.Sprintf("at most %d operations", in.TimesMax))
+		}
+	}
+	if t, ok := peopleSorts[in.Sort]; ok && in.Sort != "" {
+		q.Set("sort", in.Sort)
+		done = append(done, t)
+	}
+	return done
+}
+
+var peopleSorts = map[string]string{
+	analytics.PeopleTurnover: "by turnover", analytics.PeopleBig: "largest total first",
+	analytics.PeopleSmall: "smallest total first", analytics.PeopleCount: "most operations first",
+	analytics.PeopleNew: "latest first", analytics.PeopleOld: "earliest first",
+	analytics.PeopleBalance: "sent the most beyond what came back first", analytics.PeopleName: "by name",
+}
+
+const askPeopleSystem = `You turn a request about a list of people into filters for that list. The list shows,
+per person, the total of bank transfers sent to them and the total of money received from them.
+You never compute sums or counts: the program does that from your filters. Reply with one JSON object.
+Amounts are in Kazakhstani tenge (₸): "20k", "20к", "20 тыс" = 20000; "1.5m", "1,5 млн" = 1500000.
+Keys (leave a key out when the request does not mention it):
+  "direction": "out" (people money was sent to) | "in" (people money came from);
+  "min_amount", "max_amount": number, tenge, inclusive — the person's total on that side;
+  "times_min", "times_max": integers — the number of transfers on that side ("only once" = 1 and 1);
+  "repeat": "first" — people whose first transfer ever falls in the period;
+  "from": "YYYY-MM-DD";  "to": "YYYY-MM-DD", inclusive — which operations count;
+  "text": words to find in the name;
+  "sort": "big" | "small" (by the total) | "count" | "new" (latest first) | "old" | "balance" | "name";
+  "clear": list of filters to remove, from "amount", "period", "text", "direction", "times", "repeat", "sort".
+The request may be in Russian, Kazakh or English. It refines the current filters: keep what it does not mention.
+Only fill a key the request clearly asks for: never add a period or sorting on your own.`
+
 var sortTitles = map[string]string{
 	analytics.SortNew: "newest first", analytics.SortOld: "oldest first",
 	analytics.SortBig: "largest first", analytics.SortSmall: "smallest first",
 }
 
-// ask turns a request in plain words into filters and opens the operations page with them.
-func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
+// askOn makes the handler that turns a request in plain words into filters and opens the
+// page with them: "operations" or "transfers".
+func (s *Server) askOn(page string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { s.ask(w, r, page) }
+}
+
+func (s *Server) ask(w http.ResponseWriter, r *http.Request, page string) {
 	ctx := r.Context()
 	text := strings.TrimSpace(r.PostFormValue("prompt"))
 	q, err := url.ParseQuery(r.PostFormValue("state"))
 	if err != nil {
 		q = url.Values{}
 	}
-	for _, k := range []string{"msg", "limit", "ask"} {
+	for _, k := range []string{"msg", "limit", "ask", "name"} {
 		q.Del(k)
 	}
 	back := func(msg string) {
@@ -485,7 +637,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		if text != "" {
 			q.Set("ask", text)
 		}
-		http.Redirect(w, r, "/ui/operations?"+q.Encode(), http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/"+page+"?"+q.Encode(), http.StatusSeeOther)
 	}
 	if text == "" {
 		back("Type what to find, for example: between 20k and 50k, largest first.")
@@ -494,42 +646,58 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(text)) > 300 {
 		text = string([]rune(text)[:300])
 	}
-	cats, err := s.st.Categories(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
+	var cats []store.Category
+	system := askPeopleSystem
+	if page == "operations" {
+		system = askSystem
+		if cats, err = s.st.Categories(ctx); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	rules := ruleIntent(text)
 	in, by := rules, "rules"
 	if s.aiReady() {
-		names := make([]string, 0, len(cats)+2)
-		for _, c := range cats {
-			names = append(names, c.Name)
+		var names []string
+		if page == "operations" {
+			for _, c := range cats {
+				names = append(names, c.Name)
+			}
+			names = append(names, analytics.CashCategory, analytics.Uncategorized)
 		}
-		names = append(names, analytics.CashCategory, analytics.Uncategorized)
-		model, err := s.modelIntent(ctx, text, q, names)
+		model, err := s.modelIntent(ctx, system, text, q, names)
 		if err != nil {
 			s.log.Warn("web: ask model", "err", err)
 		} else {
-			// The model understands the rest; amounts the rules read are exact and win.
+			// The model understands the rest; amounts and counts the rules read are exact and win.
 			in, by = ground(model, text), "model"
 			if rules.Min >= 0 || rules.Max >= 0 {
 				in.Min, in.Max = rules.Min, rules.Max
 			}
+			if rules.TimesMin > 0 || rules.TimesMax > 0 {
+				in.TimesMin, in.TimesMax = rules.TimesMin, rules.TimesMax
+			}
+			// so are the keywords the rules found: a small model mixes up "the most" and "the balance"
 			for _, f := range []struct {
 				dst *string
 				v   string
-			}{{&in.Sort, rules.Sort}, {&in.Group, rules.Group}, {&in.Dir, rules.Dir}, {&in.Repeat, rules.Repeat}} {
-				if *f.dst == "" {
+			}{{&in.Sort, rules.Sort}, {&in.Group, rules.Group}, {&in.Dir, rules.Dir}, {&in.Repeat, rules.Repeat},
+				{&in.From, rules.From}, {&in.To, rules.To}} {
+				if f.v != "" {
 					*f.dst = f.v
 				}
 			}
 			in.Clear = append(in.Clear, rules.Clear...)
 		}
 	}
-	done := s.apply(q, in, cats)
+	var done []string
+	if page == "operations" {
+		done = s.apply(q, in, cats)
+	} else {
+		done = s.applyPeople(q, in)
+	}
 	if len(done) == 0 {
-		back("Could not turn that into filters. Try: between 20k and 50k · over 100k · largest first · by month · only September.")
+		back("Could not turn that into filters. Try: between 20k and 50k · over 100k · largest first · only once · only September.")
 		return
 	}
 	who := "Understood by the model"

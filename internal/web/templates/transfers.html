@@ -39,29 +39,76 @@
   {{end}}
 </div>
 {{else}}
-<div class="page-head"><div><h1>Transfers</h1><div class="sub">People you sent money to or received it from · {{.Total}} in all</div></div></div>
+{{$st := .State}}
+<div class="page-head"><div><h1>Transfers</h1><div class="sub">People you sent money to or received it from · {{.Total}} in all{{if not .Empty}} · {{.Current.Title}}{{end}}</div></div>
+  {{if not .Empty}}<div class="actions"><a class="btn secondary sm" href="{{link "/ui/operations" "type" "transfers"}}">{{template "icon" "ops"}}As operations</a></div>{{end}}
+</div>
+{{template "flash" .Flash}}
+{{if .Empty}}
+<div class="card empty">{{template "icon" "people"}}<div>No transfers yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
+{{else}}
+{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: sent only once between 20k and 50k · who sent me the most · more than 5 transfers this year")}}
+
 <form class="toolbar" method="get" action="/ui/transfers">
-  <input type="search" name="q" value="{{.Query}}" placeholder="Name, e.g. alia or daniyar k" autofocus aria-label="Search by name" style="flex: 1; min-width: 220px; font-size: 16px; padding: 10px 14px">
-  <button class="btn">{{template "icon" "search"}}Search</button>
+  <div class="seg" role="group" aria-label="Direction">
+    <a class="{{if not .Dir}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" ""}}">Everyone</a>
+    <a class="{{if eq .Dir "out"}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" "out"}}">Sent to</a>
+    <a class="{{if eq .Dir "in"}}on{{end}}" href="{{swapAt "/ui/transfers" $st "dir" "in"}}">Received from</a>
+  </div>
+  {{if .Dir}}<input type="hidden" name="dir" value="{{.Dir}}">{{end}}
+  {{if .New}}<input type="hidden" name="new" value="1">{{end}}
+  {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
+  <select name="period" aria-label="Period" onchange="if (this.form.from) { this.form.from.remove(); this.form.to.remove() } this.form.submit()">
+    {{if .Custom}}<option value="" selected>{{.Current.Title}}</option>{{end}}
+    {{range .Periods}}<option value="{{.Key}}" {{if and (not $.Custom) (eq .Key $.Current.Key)}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <input type="search" name="q" value="{{.Query}}" placeholder="Name, e.g. alia or daniyar k" aria-label="Search by name" style="flex: 1; min-width: 170px">
+  <span class="range" title="Total per person{{if eq .Dir "in"}} received{{else}} sent{{end}}"><input type="text" inputmode="decimal" name="min" value="{{.Min}}" placeholder="total from ₸" aria-label="Total from" size="9"><span class="muted">–</span><input type="text" inputmode="decimal" name="max" value="{{.Max}}" placeholder="to ₸" aria-label="Total to" size="7"></span>
+  <span class="range" title="Number of transfers{{if eq .Dir "in"}} received{{else}} sent{{end}}"><input type="text" inputmode="numeric" name="nmin" value="{{.TimesMin}}" placeholder="times from" aria-label="Times from" size="6" style="width: 84px"><span class="muted">–</span><input type="text" inputmode="numeric" name="nmax" value="{{.TimesMax}}" placeholder="to" aria-label="Times to" size="4" style="width: 60px"></span>
+  <select name="sort" aria-label="Sort" onchange="this.form.submit()">
+    {{range .Sorts}}<option value="{{.Key}}" {{if eq .Key $.Sort}}selected{{end}}>{{title .Title}}</option>{{end}}
+  </select>
+  <button class="btn secondary sm">{{template "icon" "search"}}Apply</button>
 </form>
-<p class="muted small">Kaspi statements show only a first name and the initial of the surname ("Aigerim A."), so namesakes with the same initial are merged.
-{{if not .Query}}Below are the top 30 by turnover out of {{.Total}}.{{end}}</p>
-{{if .Results}}
+
+{{if or .Query .Custom .Min .Max .TimesMin .TimesMax .New}}
+<div class="toolbar" style="margin-top: -6px">
+  <span class="muted small">Filters:</span>
+  {{if .Query}}<span class="chip">“{{.Query}}”<a href="{{swapAt "/ui/transfers" $st "q" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Custom}}<span class="chip">{{.Current.Title}}<a href="{{swapAt "/ui/transfers" $st "from" "" "to" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if or .Min .Max}}<span class="chip">{{if eq .Dir "in"}}received{{else}}sent{{end}} {{if and .Min .Max}}{{.Min}} – {{.Max}} ₸{{else if .Min}}from {{.Min}} ₸{{else}}up to {{.Max}} ₸{{end}} in total<a href="{{swapAt "/ui/transfers" $st "min" "" "max" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if or .TimesMin .TimesMax}}<span class="chip">{{if eq .TimesMin .TimesMax}}exactly {{.TimesMin}}{{else if and .TimesMin .TimesMax}}{{.TimesMin}}–{{.TimesMax}}{{else if .TimesMin}}{{.TimesMin}} or more{{else}}up to {{.TimesMax}}{{end}} {{if eq .Dir "in"}}received{{else}}sent{{end}}<a href="{{swapAt "/ui/transfers" $st "nmin" "" "nmax" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .New}}<span class="chip">new in the period<a href="{{swapAt "/ui/transfers" $st "new" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  <a class="small muted" href="/ui/transfers">clear all</a>
+</div>
+{{end}}
+
+<div class="kpis stats">
+  <div class="kpi"><div class="label">People</div><div class="value num">{{len .People}}</div></div>
+  <div class="kpi"><div class="label">Sent to them</div><div class="value num">{{kzt .Sent}}</div></div>
+  <div class="kpi"><div class="label">Received from them</div><div class="value num good">{{kzt .Received}}</div></div>
+</div>
+<p class="muted small">Kaspi statements show only a first name and the initial of the surname ("Aigerim A."), so namesakes with the same initial are merged. Totals and counts are per person over {{.Current.Title}}{{if .Dir}}, {{if eq .Dir "in"}}money received{{else}}money sent{{end}}{{end}}.</p>
+
+{{if .People}}
 <div class="card scroll" style="padding: 6px 10px">
   <table class="data">
-    <thead><tr><th>Who</th><th class="num">Sent</th><th class="num">Received</th><th class="num hide-narrow">Last</th></tr></thead>
+    <thead><tr><th>Who</th><th class="num">Sent</th><th class="num">Received</th><th class="num hide-narrow">Balance</th><th class="num hide-narrow">Last</th></tr></thead>
     <tbody>
-    {{range .Results}}<tr>
-      <td><a href="/ui/transfers?name={{.Name}}" style="display: inline-flex; gap: 10px; align-items: center"><span class="ava" style="--h: {{hue .Name}}; width: 28px; height: 28px; font-size: 12px; border-radius: 8px">{{initial .Name}}</span>{{.Name}}</a>{{with .Category}} <span class="tag save">{{.}}</span>{{end}}</td>
-      <td class="num">{{if .SentN}}{{kzt .Sent}} <span class="muted small">· {{.SentN}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-      <td class="num">{{if .ReceivedN}}<span class="good">{{kzt .Received}}</span> <span class="muted small">· {{.ReceivedN}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-      <td class="num hide-narrow muted">{{date .Last}}</td>
-    </tr>{{end}}
+    {{range $i, $p := .People}}{{if lt $i $.Shown}}<tr>
+      <td><a href="/ui/transfers?name={{$p.Name}}" style="display: inline-flex; gap: 10px; align-items: center"><span class="ava" style="--h: {{hue $p.Name}}; width: 28px; height: 28px; font-size: 12px; border-radius: 8px">{{initial $p.Name}}</span>{{$p.Name}}</a>{{with index $.Cats $p.Name}} <span class="tag save">{{.}}</span>{{end}}</td>
+      <td class="num">{{if $p.SentN}}{{kzt $p.Sent}} <span class="muted small">· {{$p.SentN}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="num">{{if $p.ReceivedN}}<span class="good">{{kzt $p.Received}}</span> <span class="muted small">· {{$p.ReceivedN}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="num hide-narrow {{if gt $p.Balance 0}}good{{end}}">{{if gt $p.Balance 0}}+{{end}}{{kzt $p.Balance}}</td>
+      <td class="num hide-narrow muted">{{date $p.Last}}</td>
+    </tr>{{end}}{{end}}
     </tbody>
   </table>
 </div>
+{{if .More}}<p style="text-align: center; margin-top: 18px"><a class="btn secondary" href="{{.More}}">Show more</a> <span class="muted small">{{.Shown}} of {{len .People}} shown</span></p>{{end}}
 {{else}}
-<div class="card empty">{{template "icon" "people"}}<div>Nobody found{{with .Query}} for "{{.}}"{{end}}.</div></div>
+<div class="card empty">{{template "icon" "people"}}<div>Nobody matches these filters.</div></div>
+{{end}}
 {{end}}
 {{end}}
 {{template "foot" .}}

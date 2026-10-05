@@ -12,14 +12,7 @@
   <div class="card empty">{{template "icon" "ops"}}<div>No operations yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
 {{else}}
 
-<form class="card ask" method="post" action="/ui/operations/ask">
-  <span class="ic">{{template "icon" "spark"}}</span>
-  <input type="hidden" name="state" value="{{.State}}">
-  <input type="text" name="prompt" value="{{.Ask}}" maxlength="300" aria-label="Ask in plain words"
-         placeholder="Ask in plain words: between 20k and 50k · over 100k, largest first · only September · by month">
-  <button class="btn">Apply</button>
-  <div class="ask-note muted tiny">{{if .AI}}A model turns your words into filters on top of the current ones; the program computes every number. Your operations are not sent to the model.{{else}}No model is running — amounts (“between 20k and 50k”, “over 100k”), sorting and grouping words are still understood.{{end}}</div>
-</form>
+{{template "askbox" (dict "Action" "/ui/operations/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: between 20k and 50k · sent for the first time · largest first · by month")}}
 
 <form class="toolbar" method="get" action="/ui/operations" id="filters">
   <div class="seg" role="group" aria-label="Kind">

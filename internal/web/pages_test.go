@@ -278,3 +278,66 @@ func TestGroundPeriod(t *testing.T) {
 }
 
 func slogDiscard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+func TestPeopleRequests(t *testing.T) {
+	for text, want := range map[string][2]int{
+		"кому отправлял больше 5 раз": {6, 0},
+		"at least 3 times": {3, 0},
+		"2 раза":           {2, 2},
+		"меньше 3 раз между 20к и 50к":        {0, 2},
+		"кому больше 5 переводов в 2026 году": {6, 0},
+	} {
+		in := ruleIntent(text)
+		if in.TimesMin != want[0] || in.TimesMax != want[1] {
+			t.Errorf("%q: times %d–%d, want %v", text, in.TimesMin, in.TimesMax, want)
+		}
+	}
+	for text, want := range map[string][3]string{
+		"кто прислал мне больше всего":        {"in", "big", ""},
+		"с кем у меня самый большой минус":    {"", "balance", ""},
+		"кому больше 5 переводов в 2026 году": {"out", "", "2026-01-01"},
+		"кому чаще всего отправлял":           {"out", "count", ""},
+	} {
+		in := ruleIntent(text)
+		if in.Dir != want[0] || in.Sort != want[1] || in.From != want[2] {
+			t.Errorf("%q: dir %q sort %q from %q, want %v", text, in.Dir, in.Sort, in.From, want)
+		}
+	}
+	if in := ruleIntent("кому больше 5 переводов в 2026 году"); in.Min >= 0 {
+		t.Errorf("a count or a year read as an amount: %d", in.Min)
+	}
+	// "5 раз" is a count, not 5 ₸; the amount next to it is still read
+	if in := ruleIntent("больше 5 раз"); in.Min >= 0 {
+		t.Errorf("count read as amount: %d", in.Min)
+	}
+	if in := ruleIntent("меньше 3 раз между 20к и 50к"); in.Min != 20000*100 || in.Max != 50000*100 {
+		t.Errorf("amount next to a count: %d–%d", in.Min, in.Max)
+	}
+
+	h, st, _ := setup(t)
+	seedOps(t, st)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 20, 12, 0, 0, 0, almaty)
+	for i, a := range []int64{3000000, 3500000} { // Bob B. twice, 30,000 and 35,000
+		st.InsertTx(ctx, store.Tx{ExternalKey: "bob" + itoa(int64(i)), OccurredAt: at.AddDate(0, 0, i), AmountMinor: a, Currency: "KZT",
+			MerchantRaw: "Bob B.", MerchantNorm: "bob b", Kind: kaspi.Transfer, Source: store.SourceImport, Status: store.StatusInfo, CreatedAt: at})
+	}
+	st.InsertTx(ctx, store.Tx{ExternalKey: "cat", OccurredAt: at, AmountMinor: 4000000, Currency: "KZT",
+		MerchantRaw: "Cara C.", MerchantNorm: "cara c", Kind: kaspi.Transfer, Source: store.SourceImport, Status: store.StatusInfo, CreatedAt: at})
+	// sent only once, 20k–50k: Cara (40,000 once); not Bob (twice), not Adam (50,000 + received)
+	w := post(h, "/ui/transfers/ask", url.Values{"prompt": {"кому отправлял только один раз между 20к и 50к"}, "state": {""}})
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	if loc.Path != "/ui/transfers" || loc.Query().Get("nmin") != "1" || loc.Query().Get("nmax") != "1" || loc.Query().Get("min") != "20000" {
+		t.Fatalf("redirect %s", loc)
+	}
+	page := do(h, "GET", loc.String(), nil, "", true).Body.String()
+	if !strings.Contains(page, "Cara C.") || strings.Contains(page, ">Bob B.<") || !strings.HasSuffix(strings.TrimSpace(page), "</html>") {
+		t.Errorf("people page: cara %v bob %v loc %s", strings.Contains(page, "Cara C."), strings.Contains(page, ">Bob B.<"), loc)
+	}
+	// sorting and the direction switch render
+	for _, p := range []string{"/ui/transfers?dir=in&sort=big", "/ui/transfers?sort=balance&nmin=2", "/ui/transfers?new=1&period=30d"} {
+		if b := do(h, "GET", p, nil, "", true).Body.String(); !strings.HasSuffix(strings.TrimSpace(b), "</html>") {
+			t.Errorf("%s cut short", p)
+		}
+	}
+}

@@ -123,6 +123,7 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
 		"swap":     swap,
+		"swapAt":   swapAt,
 		"subi":     func(a, b int) int { return a - b },
 		"add":      func(a, b int) int { return a + b },
 		"title": func(s string) string {
@@ -162,7 +163,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	ui.HandleFunc("GET /ui/analytics", s.analytics)
 	ui.HandleFunc("GET /ui/operations", s.operations)
 	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
-	ui.HandleFunc("POST /ui/operations/ask", s.ask)
+	ui.HandleFunc("POST /ui/operations/ask", s.askOn("operations"))
+	ui.HandleFunc("POST /ui/transfers/ask", s.askOn("transfers"))
 	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 	ui.HandleFunc("GET /ui/categories", s.categories)
 	ui.HandleFunc("POST /ui/categories", s.categoryAction)
@@ -595,15 +597,37 @@ type transfersData struct {
 	Categories []store.Category
 	Flash      string
 	Query      string
-	Results    []store.Counterparty
 	Total      int // total number of people
 	Name       string
 	Person     *store.Counterparty
 	Ops        []store.Tx
+	// the list of people
+	Empty          bool
+	People         []analytics.Person
+	Shown          int
+	More           string
+	Cats           map[string]string // person → category their transfers count in
+	Sent, Received int64
+	Periods        []analytics.Period
+	Current        analytics.Period
+	Custom         bool
+	From, To       string
+	Dir            string
+	Min, Max       string
+	TimesMin       string
+	TimesMax       string
+	New            bool
+	Sort           string
+	Sorts          []struct{ Key, Title string }
+	Ask            string
+	AI             bool
+	State          string
 }
 
-// transfers searches people money was sent to or received from. Without a query it shows
-// the largest by turnover; ?name= shows all operations with a person.
+const peoplePage = 50
+
+// transfers lists people money was sent to or received from, with filters and requests in
+// plain words; ?name= shows all operations with a person.
 func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	all, err := s.st.Counterparties(ctx)
@@ -611,7 +635,8 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	d := transfersData{Query: strings.TrimSpace(r.URL.Query().Get("q")), Total: len(all), Name: r.URL.Query().Get("name")}
+	q := r.URL.Query()
+	d := transfersData{Query: strings.TrimSpace(q.Get("q")), Total: len(all), Name: q.Get("name"), Flash: q.Get("msg")}
 	if d.Name != "" {
 		for i := range all {
 			if all[i].Name == d.Name {
@@ -626,26 +651,70 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
-		d.Flash = r.URL.Query().Get("msg")
+		s.show(w, r, "transfers.html", d.Name, "transfers", &d)
+		return
+	}
+	d.Cats = map[string]string{}
+	for _, c := range all {
+		if c.Category != "" {
+			d.Cats[c.Name] = c.Category
+		}
+	}
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	first, last, ok := bounds(rows)
+	if !ok {
+		d.Empty = true
 		s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
 		return
 	}
-	terms := strings.Fields(analytics.Fold(d.Query))
-	for _, c := range all {
-		name := analytics.Fold(c.Name)
-		match := true
-		for _, t := range terms {
-			if !strings.Contains(name, t) {
-				match = false
-				break
-			}
-		}
-		if match {
-			d.Results = append(d.Results, c)
-		}
-		if d.Query == "" && len(d.Results) == 30 {
-			break
-		}
+	d.Periods = analytics.Periods(first, last)
+	of, custom := filterFrom(q, d.Periods, s.loc)
+	f := analytics.PeopleFilter{Period: of.Period, Dir: of.Dir, Query: d.Query, Min: of.Min, Max: of.Max,
+		New: q.Get("new") == "1", Sort: q.Get("sort")}
+	f.TimesMin, _ = strconv.Atoi(q.Get("nmin"))
+	f.TimesMax, _ = strconv.Atoi(q.Get("nmax"))
+	if _, ok := peopleSorts[f.Sort]; !ok {
+		f.Sort = analytics.PeopleTurnover
+	}
+	d.Current, d.Custom = f.Period, custom
+	if custom {
+		d.From, d.To = q.Get("from"), q.Get("to")
+	}
+	d.Dir, d.Min, d.Max, d.New, d.Sort = f.Dir, q.Get("min"), q.Get("max"), f.New, f.Sort
+	if f.TimesMin > 0 {
+		d.TimesMin = strconv.Itoa(f.TimesMin)
+	}
+	if f.TimesMax > 0 {
+		d.TimesMax = strconv.Itoa(f.TimesMax)
+	}
+	for _, k := range []string{analytics.PeopleTurnover, analytics.PeopleBig, analytics.PeopleSmall, analytics.PeopleCount,
+		analytics.PeopleNew, analytics.PeopleOld, analytics.PeopleBalance, analytics.PeopleName} {
+		d.Sorts = append(d.Sorts, struct{ Key, Title string }{k, peopleSorts[k]})
+	}
+	d.Ask, d.AI = q.Get("ask"), s.aiReady()
+	sq := cloneValues(q)
+	for _, k := range []string{"msg", "limit", "ask"} {
+		sq.Del(k)
+	}
+	d.State = sq.Encode()
+	d.People = analytics.People(rows, f)
+	for _, p := range d.People {
+		d.Sent += p.Sent
+		d.Received += p.Received
+	}
+	limit := peoplePage
+	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > limit {
+		limit = n
+	}
+	d.Shown = min(len(d.People), limit)
+	if len(d.People) > limit {
+		mq := cloneValues(q)
+		mq.Set("limit", strconv.Itoa(limit+peoplePage))
+		d.More = "/ui/transfers?" + mq.Encode()
 	}
 	s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
 }

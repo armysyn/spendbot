@@ -20,8 +20,12 @@ local model through Ollama. Your data never leaves your computer unless you conn
   text, amount range and direction; sorting by date or amount; grouping by month, week, day,
   weekday, category, merchant or kind with sums; average, median and largest; CSV export; a
   category change for one purchase or all purchases of a merchant.
-- **Requests in plain words** — "between 20k and 50k, largest first" on the operations page
-  becomes filters on top of the current ones. The local model (or the bot's model) only
+- **Transfers** — people money went to or came from, with totals, counts and balance per
+  person over any period; filters by direction, total, number of transfers and people new in
+  the period; sorting by total, count, balance or date.
+- **Requests in plain words** — "between 20k and 50k, largest first" on the operations page,
+  "sent only once between 20k and 50k" or "who sent me the most" on the transfers page,
+  become filters on top of the current ones. The local model (or the bot's model) only
   translates the words; it never sees the operations, and the program computes every number.
   Amounts and sorting words work without any model.
 - **Categories** — spending per category, add, rename, merge, archive, mark as savings.
