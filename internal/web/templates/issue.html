@@ -1,0 +1,68 @@
+{{template "head" .Page}}
+{{$is := .Issue}}
+<div class="page-head">
+  <div style="display: flex; gap: 14px; align-items: flex-start">
+    <span class="ava issue-ic {{$is.Kind}}{{if eq $is.Status "closed"}} done{{end}}" style="width: 44px; height: 44px; border-radius: 12px" aria-hidden="true">{{if eq $is.Status "closed"}}{{template "icon" "check"}}{{else if eq $is.Kind "bug"}}{{template "icon" "bug"}}{{else}}{{template "icon" "bulb"}}{{end}}</span>
+    <div>
+      <h1>{{$is.Title}} <span class="muted" style="font-weight: 400">#{{$is.ID}}</span></h1>
+      <div class="sub" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
+        {{if eq $is.Status "open"}}<span class="pill ok">open</span>{{else}}<span class="pill">closed {{with $is.ClosedAt}}{{datetime .}}{{end}}</span>{{end}}
+        <span>{{if eq $is.Kind "bug"}}problem{{else}}idea{{end}}</span>
+        {{if eq $is.Priority "high"}}<span class="pill up">high priority</span>{{else if eq $is.Priority "low"}}<span class="tag">low priority</span>{{end}}
+        <span>· opened {{datetime $is.CreatedAt}}</span>
+        {{with $is.Page}}<span>· about <a href="{{.}}">{{.}}</a></span>{{end}}
+        {{if $is.GitHub}}<span>· GitHub #{{$is.GitHub}}</span>{{end}}
+      </div>
+    </div>
+  </div>
+  <div class="actions"><a class="btn ghost sm" href="/ui/issues">{{template "icon" "left"}}All issues</a></div>
+</div>
+{{template "flash" .Flash}}
+
+<div class="grid g3">
+  <div class="stack">
+    <div class="card">
+      {{if $is.Body}}<div class="issue-body">{{$is.Body}}</div>{{else}}<p class="muted" style="margin: 0">No details.</p>{{end}}
+    </div>
+    {{range .Comments}}
+    <div class="card">
+      <div class="muted tiny" style="margin-bottom: 6px">{{datetime .CreatedAt}}</div>
+      <div class="issue-body">{{.Body}}</div>
+    </div>
+    {{end}}
+    <form class="card" method="post" action="/ui/issues/{{$is.ID}}" style="display: grid; gap: 10px">
+      <input type="hidden" name="action" value="comment">
+      <div class="field"><label for="cb">Add a comment</label><textarea id="cb" name="body" rows="4" required placeholder="An update, a detail, how it was fixed"></textarea></div>
+      <div class="actions">
+        <button class="btn sm">Comment</button>
+        {{if eq $is.Status "open"}}<button class="btn sm secondary" name="close" value="1">Comment and close</button>{{end}}
+      </div>
+    </form>
+  </div>
+
+  <div class="stack">
+    <div class="card" style="display: grid; gap: 8px">
+      <form method="post" action="/ui/issues/{{$is.ID}}">
+        {{if eq $is.Status "open"}}<input type="hidden" name="action" value="close"><button class="btn sm" style="width: 100%; justify-content: center">{{template "icon" "check"}}Close issue</button>
+        {{else}}<input type="hidden" name="action" value="reopen"><button class="btn sm secondary" style="width: 100%; justify-content: center">Reopen</button>{{end}}
+      </form>
+    </div>
+    <details class="card">
+      <summary style="cursor: pointer; font-weight: 600">Edit</summary>
+      <form method="post" action="/ui/issues/{{$is.ID}}" style="display: grid; gap: 10px; margin-top: 12px">
+        <input type="hidden" name="action" value="edit">
+        <div class="field"><label for="ek">Kind</label><select id="ek" name="kind"><option value="bug" {{if eq $is.Kind "bug"}}selected{{end}}>Problem</option><option value="idea" {{if eq $is.Kind "idea"}}selected{{end}}>Idea</option></select></div>
+        <div class="field"><label for="et">Title</label><input id="et" type="text" name="title" value="{{$is.Title}}" maxlength="140" required></div>
+        <div class="field"><label for="eb">Details</label><textarea id="eb" name="body" rows="6">{{$is.Body}}</textarea></div>
+        <div class="field"><label for="ep">Priority</label><select id="ep" name="priority"><option value="low" {{if eq $is.Priority "low"}}selected{{end}}>Low</option><option value="normal" {{if eq $is.Priority "normal"}}selected{{end}}>Normal</option><option value="high" {{if eq $is.Priority "high"}}selected{{end}}>High</option></select></div>
+        <div class="field"><label for="epg">Page</label><input id="epg" type="text" name="page" value="{{$is.Page}}"></div>
+        <div><button class="btn sm">Save</button></div>
+      </form>
+    </details>
+    <form class="card" method="post" action="/ui/issues/{{$is.ID}}">
+      <input type="hidden" name="action" value="delete">
+      <button class="btn sm danger" onclick="return confirm('Delete issue #{{$is.ID}} and its comments?')">Delete issue</button>
+    </form>
+  </div>
+</div>
+{{template "foot" .}}

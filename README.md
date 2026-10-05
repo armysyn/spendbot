@@ -41,6 +41,8 @@ local model through Ollama. Your data never leaves your computer unless you conn
   double charges, growing categories, saving tips.
 - **Transfers** — search by recipient name, sent and received per person; transfers to a
   person can count as spending in a category (rent).
+- **Issues** — problems and wishes about spendbot written down on the site, with priority,
+  the page they are about, comments, closing and search; kept locally for now.
 - **Apple Wallet + Telegram** — the Shortcuts "Transaction" automation sends each payment and
   the bot asks "what for?" with category buttons.
 
@@ -124,7 +126,7 @@ Shortcuts → Automation → Transaction, all cards, Run Immediately. Action "Ge
 | `internal/kaspi`, `statement`, `importer` | Kaspi labels, PDF parsing, duplicate-free import |
 | `internal/analytics` | analytics page and reconciliation — pure functions over operation rows |
 | `internal/analysis` | merchant questions, batches, insights, ClickHouse sync |
-| `internal/web` | home, operations, analytics, categories, batches, transfers, settings, import pages |
+| `internal/web` | home, operations, analytics, income, categories, transfers, issues, batches, settings, import pages |
 | `internal/ingest` | `POST /api/v1/tx`, `GET /healthz`, token, rate limit, dedupe |
 | `internal/bot`, `classify`, `llm` | Telegram, classification (memory → model → question), Ollama / Claude / OpenAI |
 | `internal/money`, `merchant`, `report`, `scheduler` | amounts, merchant names, summaries, `VACUUM INTO` backups |
