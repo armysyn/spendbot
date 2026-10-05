@@ -115,6 +115,56 @@ type Filter struct {
 	Exclude  []string // savings categories not counted as spending
 	Min, Max int64    // bounds of the amount without its sign, tiyn, inclusive; 0 — no bound
 	Dir      string   // DirOut — money out (spending, sent), DirIn — money in; empty — both
+	// Repeat keeps operations by their history with the same merchant or person over all
+	// time, whatever the other filters: RepeatFirst — the first one with them, RepeatOnce —
+	// the only one with them ever. Operations count together when they share the merchant,
+	// the kind and the direction: a transfer to someone is not mixed with money from them.
+	Repeat string
+}
+
+// History filters for Filter.Repeat.
+const (
+	RepeatFirst = "first"
+	RepeatOnce  = "once"
+)
+
+type histKey struct {
+	who, kind string
+	in        bool
+}
+
+type hist struct {
+	n     int
+	first store.LedgerRow
+}
+
+func historyKey(r store.LedgerRow) histKey {
+	who := merchantKey(r)
+	if who == "" {
+		who = Fold(r.Merchant)
+	}
+	return histKey{who: who, kind: r.Kind, in: r.Amount < 0}
+}
+
+// history counts operations per merchant, kind and direction over all rows and remembers the first.
+func history(all []store.LedgerRow) map[histKey]*hist {
+	out := map[histKey]*hist{}
+	for _, r := range all {
+		if r.Amount == 0 {
+			continue
+		}
+		k := historyKey(r)
+		h, ok := out[k]
+		if !ok {
+			h = &hist{first: r}
+			out[k] = h
+		}
+		h.n++
+		if r.At.Before(h.first.At) || r.At.Equal(h.first.At) && r.TxID < h.first.TxID {
+			h.first = r
+		}
+	}
+	return out
 }
 
 // Money directions for Filter.Dir.
@@ -191,6 +241,10 @@ func Operations(all []store.LedgerRow, f Filter) Ops {
 		}
 	}
 	terms := strings.Fields(Fold(f.Query))
+	var hs map[histKey]*hist
+	if f.Repeat == RepeatFirst || f.Repeat == RepeatOnce {
+		hs = history(all)
+	}
 	var out Ops
 	for _, r := range rows {
 		if f.Merchant != "" && merchantKey(r) != f.Merchant {
@@ -205,6 +259,12 @@ func Operations(all []store.LedgerRow, f Filter) Ops {
 		}
 		if !inRange(amount, f) {
 			continue
+		}
+		if hs != nil {
+			h := hs[historyKey(r)]
+			if h == nil || f.Repeat == RepeatOnce && h.n != 1 || f.Repeat == RepeatFirst && h.first.TxID != r.TxID {
+				continue
+			}
 		}
 		o := Op{TxID: r.TxID, At: r.At, Merchant: merchantName(r), MerchantKey: merchantKey(r), Kind: r.Kind,
 			Status: r.Status, Source: r.Source, Amount: amount, Full: r.Amount, Categories: r.Categories,

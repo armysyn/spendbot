@@ -133,3 +133,37 @@ func TestSortStatsGroups(t *testing.T) {
 		t.Errorf("months: %+v", ms)
 	}
 }
+
+// "First time" and "only once" look at the whole history, not at the current filters.
+func TestRepeatFilter(t *testing.T) {
+	st := testStore(t)
+	seed(t, st)
+	rows := ledger(t, st)
+	p := Period{From: time.Date(2026, 8, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty)}
+	names := func(f Filter) map[string]int {
+		out := map[string]int{}
+		for _, o := range Operations(rows, f).Ops {
+			out[o.Merchant]++
+		}
+		return out
+	}
+	// Magnum twice (as "MAGNUM" and "MAGNUM #12"), cash three times: only the first of each
+	first := names(Filter{Period: p, Repeat: RepeatFirst})
+	if first["Magnum"] != 1 || first[CashMerchant] != 1 || first["Yandex Go"] != 1 {
+		t.Errorf("first: %v", first)
+	}
+	once := names(Filter{Period: p, Repeat: RepeatOnce})
+	// the Sportmaster purchase and its refund go in different directions: each is the only one of its own
+	if once["Magnum"] != 0 || once[CashMerchant] != 0 || once["Yandex Go"] != 1 || once["Sportmaster"] != 2 {
+		t.Errorf("once: %v", once)
+	}
+	// the amount range does not change who counts as new: the second Magnum purchase (5,000)
+	// is not a first one even when the first (10,000) is filtered out by the amount
+	if got := names(Filter{Period: p, Repeat: RepeatFirst, Max: 6_000 * tg}); got["Magnum"] != 0 {
+		t.Errorf("first within an amount range: %v", got)
+	}
+	tr := Operations(rows, Filter{Period: p, Type: TypeTransfers, Dir: DirOut, Repeat: RepeatOnce, Min: 20_000 * tg, Max: 200_000 * tg})
+	if len(tr.Ops) != 1 || tr.Ops[0].Merchant != "Aigerim A." {
+		t.Errorf("transfers sent once: %+v", tr.Ops)
+	}
+}

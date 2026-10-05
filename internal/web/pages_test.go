@@ -200,6 +200,16 @@ func TestRuleIntent(t *testing.T) {
 		{"самые крупные по месяцам", -1, -1, "big", "month"},
 		{"за сентябрь 2026 по категориям", -1, -1, "", "category"},
 	}
+	for text, want := range map[string]string{
+		"между 20000 и 50000, кому впервые отправлялось": "first",
+		"к кому отправлял только один раз":               "once",
+		"sent only once, 20k-50k": "once",
+		"first time transfers":    "first",
+	} {
+		if got := ruleIntent(text).Repeat; got != want {
+			t.Errorf("%q: repeat %q, want %q", text, got, want)
+		}
+	}
 	for _, c := range cases {
 		in := ruleIntent(c.text)
 		toT := func(v int64) int64 {
@@ -248,6 +258,22 @@ func TestAskKeepsFilters(t *testing.T) {
 	// Adam S. sent 50,000 and received 10,000: only the transfer is in the range
 	if !strings.Contains(page, `<div class="value num">1</div>`) {
 		t.Errorf("one operation expected in 20k–50k")
+	}
+}
+
+func TestGroundPeriod(t *testing.T) {
+	model := intent{From: "2026-10-06", To: "2026-10-06", Min: -1, Max: -1}
+	for text, keep := range map[string]bool{
+		"между 20000 и 50000, кому впервые отправлялось": false,
+		"только один раз":       false,
+		"за сентябрь":           true,
+		"в 2025":                true,
+		"с 05.10":               true,
+		"over 20000 last month": true,
+	} {
+		if got := ground(model, text).From != ""; got != keep {
+			t.Errorf("%q: period kept %v", text, got)
+		}
 	}
 }
 

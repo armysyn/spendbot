@@ -51,6 +51,11 @@
   {{end}}
   <input type="search" name="q" value="{{.Query}}" placeholder="Merchant, person or category" aria-label="Search" style="flex: 1; min-width: 170px">
   <span class="range"><input type="text" inputmode="decimal" name="min" value="{{.Min}}" placeholder="from ₸" aria-label="Amount from" size="7"><span class="muted">–</span><input type="text" inputmode="decimal" name="max" value="{{.Max}}" placeholder="to ₸" aria-label="Amount to" size="7"></span>
+  <select name="repeat" aria-label="History" onchange="this.form.submit()">
+    <option value="">Any history</option>
+    <option value="first" {{if eq .Repeat "first"}}selected{{end}}>First time with them</option>
+    <option value="once" {{if eq .Repeat "once"}}selected{{end}}>Only once ever</option>
+  </select>
   <select name="sort" aria-label="Sort" onchange="this.form.submit()">
     <option value="new" {{if eq .Sort "new"}}selected{{end}}>Newest first</option>
     <option value="old" {{if eq .Sort "old"}}selected{{end}}>Oldest first</option>
@@ -64,7 +69,7 @@
   <button class="btn secondary sm">{{template "icon" "search"}}Apply</button>
 </form>
 
-{{if or .Merchant .Custom .Category .Query .Min .Max .Dir}}
+{{if or .Merchant .Custom .Category .Query .Min .Max .Dir .Repeat}}
 <div class="toolbar" style="margin-top: -6px">
   <span class="muted small">Filters:</span>
   {{if .Merchant}}<span class="chip">{{if .MerchantName}}{{.MerchantName}}{{else}}merchant{{end}}<a href="{{swap $st "m" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
@@ -73,6 +78,7 @@
   {{if .Query}}<span class="chip">“{{.Query}}”<a href="{{swap $st "q" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
   {{if or .Min .Max}}<span class="chip">{{if and .Min .Max}}{{.Min}} – {{.Max}} ₸{{else if .Min}}from {{.Min}} ₸{{else}}up to {{.Max}} ₸{{end}}<a href="{{swap $st "min" "" "max" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
   {{if .Dir}}<span class="chip">{{if eq .Dir "in"}}money in{{else}}money out{{end}}<a href="{{swap $st "dir" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
+  {{if .Repeat}}<span class="chip">{{if eq .Repeat "first"}}first time with them{{else}}only once ever{{end}}<a href="{{swap $st "repeat" ""}}" aria-label="Remove">{{template "icon" "x"}}</a></span>{{end}}
   <a class="small muted" href="/ui/operations">clear all</a>
 </div>
 {{end}}
@@ -124,6 +130,6 @@
 {{else}}
   <div class="card empty" style="margin-top: 14px">{{template "icon" "search"}}<div>Nothing matches these filters.</div></div>
 {{end}}
-<p class="muted small" style="margin-top: 18px">The ✎ button changes a category. Spending totals here match the analytics page for the same period, category or merchant. Amount filters compare amounts without their sign.</p>
+<p class="muted small" style="margin-top: 18px">The ✎ button changes a category. Spending totals here match the analytics page for the same period, category or merchant. Amount filters compare amounts without their sign. “First time” and “only once” look at the whole history with that merchant or person, in the same direction, not only at the current filters.</p>
 {{end}}
 {{template "foot" .}}

@@ -38,6 +38,7 @@ type intent struct {
 	Kind, Dir  string
 	Category   string
 	Text       string
+	Repeat     string
 	Sort       string
 	Group      string
 	Clear      []string
@@ -170,6 +171,12 @@ func ruleIntent(text string) intent {
 	case has("исходящ", "отправил", "перевел", "перевёл", "outgoing", "money out"):
 		set(&in.Dir, analytics.DirOut)
 	}
+	switch {
+	case has("только один раз", "один раз", "единожды", "однократ", "only once", "just once", "a single time"):
+		set(&in.Repeat, analytics.RepeatOnce)
+	case has("впервые", "первый раз", "в первый", "первые переводы", "новым получател", "новые получател", "first time", "for the first", "new recipient", "new people"):
+		set(&in.Repeat, analytics.RepeatFirst)
+	}
 	if has("сбрось", "очисти", "убери все", "clear", "reset") {
 		in.Clear, in.understood = []string{"amount", "period", "category", "text", "merchant", "direction", "sort", "group"}, true
 	}
@@ -195,9 +202,10 @@ Keys (leave a key out when the request does not mention it):
   "direction": "out" (money spent or sent) | "in" (money received);
   "category": one name from the given categories, exactly as written;
   "text": words to find in the merchant or person name;
+  "repeat": "first" (the first operation ever with that person or merchant) | "once" (the only operation ever with them);
   "sort": "new" | "old" | "big" (largest amount first) | "small";
   "group": "month" | "week" | "day" | "weekday" | "category" | "merchant" | "kind";
-  "clear": list of filters to remove, from "amount", "period", "category", "text", "merchant", "direction", "sort", "group".
+  "clear": list of filters to remove, from "amount", "period", "category", "text", "merchant", "direction", "repeat", "sort", "group".
 The request may be in Russian, Kazakh or English. It refines the current filters: keep what it does not mention.
 Only fill a key the request clearly asks for: never add a period, sorting or grouping on your own.`
 
@@ -242,6 +250,7 @@ func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, c
 	in.Min, in.Max = amount("min_amount"), amount("max_amount")
 	in.From, in.To = str("from"), str("to")
 	in.Kind, in.Dir, in.Category, in.Text, in.Sort, in.Group = str("kind"), str("direction"), str("category"), str("text"), str("sort"), str("group")
+	in.Repeat = str("repeat")
 	if cl, ok := m["clear"].([]any); ok {
 		for _, c := range cl {
 			if c, ok := c.(string); ok {
@@ -257,13 +266,20 @@ func (s *Server) modelIntent(ctx context.Context, text string, cur url.Values, c
 var cues = map[string][]string{
 	"sort":      {"сначала", "сортир", "отсорт", "крупн", "самы", "наибол", "мелк", "дорог", "дешев", "стар", "нов", "первы", "first", "sort", "big", "larg", "small", "old", "new", "expensive", "cheap", "top", "топ"},
 	"group":     {"по ", "сгрупп", "группир", "разбей", "разбив", "помесяч", "понедел", "by ", "group", "per ", "monthly", "weekly", "daily", "breakdown"},
-	"period":    {"январ", "феврал", "март", "апрел", "мая", "май", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр", "вчера", "сегодня", "недел", "месяц", "год", "дн", "прошл", "этот", "этом", "текущ", "с ", "после", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "today", "yesterday", "week", "month", "year", "day", "since", "after", "before", "last", "this", "20"},
+	"period":    {"январ", "феврал", "март", "апрел", "мая", "май", "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр", "вчера", "сегодня", "недел", "месяц", "год", "дней", "день", "дня", "прошл", "этот", "этом", "текущ", "с ", "после", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "today", "yesterday", "week", "month", "year", "day", "since", "after", "before", "last", "this"},
 	"direction": {"получ", "входящ", "пришл", "приход", "поступ", "отправ", "перев", "исходящ", "расход", "receiv", "incoming", "sent", "send", "outgoing", " in", " out"},
 	"kind":      {"перевод", "трат", "покуп", "расход", "все операц", "всё", "transfer", "spend", "purchase", "all "},
+	"repeat":    {"впервые", "перв", "один раз", "единожды", "однократ", "нов", "first", "once", "single", "new"},
 	"clear":     {"сброс", "очист", "убери", "без ", "удали", "remove", "clear", "reset", "without", "drop"},
 }
 
+// dateRe finds a year or a date in a request: "2026", "05.10", "5/10".
+var dateRe = regexp.MustCompile(`(^|[^\d])((19|20)\d\d|\d{1,2}[./]\d{1,2})([^\d]|$)`)
+
 func hasCue(text, key string) bool {
+	if key == "period" && dateRe.MatchString(text) {
+		return true
+	}
 	low := " " + strings.ToLower(text) + " "
 	for _, c := range cues[key] {
 		if strings.Contains(low, c) {
@@ -290,6 +306,9 @@ func ground(in intent, text string) intent {
 	if !hasCue(text, "kind") {
 		in.Kind = ""
 	}
+	if !hasCue(text, "repeat") {
+		in.Repeat = ""
+	}
 	if !hasCue(text, "clear") {
 		in.Clear = nil
 	}
@@ -304,7 +323,7 @@ func ground(in intent, text string) intent {
 func describe(q url.Values) map[string]string {
 	out := map[string]string{}
 	for k, name := range map[string]string{"type": "kind", "period": "period", "from": "from", "to": "to", "cat": "category",
-		"m": "merchant", "q": "text", "min": "min_amount", "max": "max_amount", "dir": "direction", "sort": "sort", "group": "group"} {
+		"m": "merchant", "q": "text", "min": "min_amount", "max": "max_amount", "dir": "direction", "repeat": "repeat", "sort": "sort", "group": "group"} {
 		if v := q.Get(k); v != "" {
 			out[name] = v
 		}
@@ -336,6 +355,8 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 			q.Del("m")
 		case "direction":
 			q.Del("dir")
+		case "repeat":
+			q.Del("repeat")
 		case "sort", "group":
 			q.Del(c)
 		default:
@@ -418,6 +439,14 @@ func (s *Server) apply(q url.Values, in intent, cats []store.Category) []string 
 		}
 		done = append(done, map[string]string{"in": "money in", "out": "money out"}[in.Dir])
 	}
+	switch in.Repeat {
+	case analytics.RepeatFirst:
+		q.Set("repeat", in.Repeat)
+		done = append(done, "first operation with each merchant or person")
+	case analytics.RepeatOnce:
+		q.Set("repeat", in.Repeat)
+		done = append(done, "only one operation with them ever")
+	}
 	if t := strings.Join(strings.Fields(in.Text), " "); t != "" && len([]rune(t)) <= 60 {
 		q.Set("q", t)
 		done = append(done, "“"+t+"”")
@@ -490,7 +519,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 			for _, f := range []struct {
 				dst *string
 				v   string
-			}{{&in.Sort, rules.Sort}, {&in.Group, rules.Group}, {&in.Dir, rules.Dir}} {
+			}{{&in.Sort, rules.Sort}, {&in.Group, rules.Group}, {&in.Dir, rules.Dir}, {&in.Repeat, rules.Repeat}} {
 				if *f.dst == "" {
 					*f.dst = f.v
 				}

@@ -193,6 +193,7 @@ type operationsData struct {
 	Query        string
 	Min, Max     string // amount bounds as typed, tenge
 	Dir          string
+	Repeat       string
 	Sort         string
 	Group        string
 	Groups       []analytics.Group
@@ -229,6 +230,9 @@ func filterFrom(q url.Values, ps []analytics.Period, loc *time.Location) (analyt
 	}
 	if d := q.Get("dir"); d == analytics.DirIn || d == analytics.DirOut {
 		f.Dir = d
+	}
+	if r := q.Get("repeat"); r == analytics.RepeatFirst || r == analytics.RepeatOnce {
+		f.Repeat = r
 	}
 	switch f.Type {
 	case analytics.TypeSpend, analytics.TypeTransfers, analytics.TypeAll:
@@ -286,7 +290,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 		d.From, d.To = q.Get("from"), q.Get("to")
 	}
 	d.Type, d.Category, d.Merchant, d.Query = f.Type, f.Category, f.Merchant, f.Query
-	d.Min, d.Max, d.Dir, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, q.Get("sort"), q.Get("group")
+	d.Min, d.Max, d.Dir, d.Repeat, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, f.Repeat, q.Get("sort"), q.Get("group")
 	d.Groupings, d.Ask, d.AI = analytics.Groupings, q.Get("ask"), s.aiReady()
 	sq := cloneValues(q)
 	for _, k := range []string{"msg", "limit", "ask"} {
