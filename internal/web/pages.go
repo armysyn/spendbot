@@ -130,6 +130,7 @@ type homeSummary struct {
 	PrevTitle string
 	Pace      int64 // projected month total while the month is in progress
 	Recent    []analytics.Op
+	Flow      analytics.Flow // income and what went out this month
 }
 
 func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
@@ -146,6 +147,23 @@ func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
 	if m, ok := latestMonth(ps); ok {
 		h.Month = m
 		h.D = analytics.Build(rows, m, nil)
+		names, err := s.st.IncomeSources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		savings, err := s.st.SavingsNames(ctx)
+		if err != nil {
+			return nil, err
+		}
+		salaries, err := s.st.SalaryPeriods(ctx)
+		if err != nil {
+			return nil, err
+		}
+		sources := map[string]bool{}
+		for _, n := range names {
+			sources[n] = true
+		}
+		h.Flow = analytics.CashFlow(rows, analytics.FlowFilter{Period: m, Exclude: savings, Sources: sources, Salaries: salaries, People: true})
 		prev := m.Prev()
 		if h.HasPrev = !prev.From.Before(first); h.HasPrev {
 			h.Change = changeOf(analytics.Compare(h.D.Totals.Spend, analytics.Build(rows, prev, nil).Totals.Spend))

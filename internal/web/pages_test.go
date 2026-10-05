@@ -370,3 +370,48 @@ func TestCategoriesPage(t *testing.T) {
 		t.Errorf("ask: %s", loc)
 	}
 }
+
+func TestIncomePage(t *testing.T) {
+	h, st, _ := setup(t)
+	seedOps(t, st)
+	ctx := context.Background()
+	st.InsertTx(ctx, store.Tx{ExternalKey: "sal", OccurredAt: time.Date(2026, 8, 10, 12, 0, 0, 0, almaty), AmountMinor: -40000000,
+		Currency: "KZT", MerchantRaw: kaspi.Salary, MerchantNorm: "salary", Kind: kaspi.TopUp, Source: store.SourceImport,
+		Status: store.StatusInfo, CreatedAt: time.Now()})
+	act := func(f url.Values) string {
+		w := post(h, "/ui/income", f)
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("%v: %d", f, w.Code)
+		}
+		return w.Header().Get("Location")
+	}
+	act(url.Values{"action": {"salary_save"}, "from": {"2025-01"}, "to": {"2026-06"}, "amount": {"350k"}, "employer": {"  Old  Co "}})
+	act(url.Values{"action": {"salary_save"}, "from": {"2026-07"}, "amount": {"400000"}})
+	if loc := act(url.Values{"action": {"salary_save"}, "from": {"2026-07"}, "to": {"2026-01"}, "amount": {"1"}}); !strings.Contains(loc, "msg=") {
+		t.Error("an end before the start must be refused")
+	}
+	ps, _ := st.SalaryPeriods(ctx)
+	if len(ps) != 2 || ps[0].From != "2026-07" || !ps[0].Current() || ps[1].AmountMinor != 35000000 || ps[1].Employer != "Old Co" {
+		t.Fatalf("periods: %+v", ps)
+	}
+	act(url.Values{"action": {"source_on"}, "name": {"Adam S."}})
+	if src, _ := st.IncomeSources(ctx); len(src) != 1 {
+		t.Fatalf("sources %v", src)
+	}
+	for _, p := range []string{"/ui/income", "/ui/income?period=all&basis=declared", "/ui/income?people=0&withsave=1&period=2026-08"} {
+		b := do(h, "GET", p, nil, "", true).Body.String()
+		if !strings.HasSuffix(strings.TrimSpace(b), "</html>") {
+			t.Errorf("%s cut short:\n%s", p, tail(b))
+		}
+	}
+	page := do(h, "GET", "/ui/income?period=all", nil, "", true).Body.String()
+	for _, want := range []string{"400,000", "+400,000", "Old Co"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("income page lacks %q", want)
+		}
+	}
+	act(url.Values{"action": {"salary_delete"}, "id": {itoa(ps[1].ID)}})
+	if ps, _ = st.SalaryPeriods(ctx); len(ps) != 1 {
+		t.Errorf("delete: %+v", ps)
+	}
+}

@@ -124,6 +124,9 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 		"cols":     cols,
 		"swap":     swap,
 		"swapAt":   swapAt,
+		"tenge":    tenge,
+		"mod":      func(a, b int) int { return a % max(b, 1) },
+		"every":    func(n int) int { return max((n+11)/12, 1) },
 		"subi":     func(a, b int) int { return a - b },
 		"add":      func(a, b int) int { return a + b },
 		"title": func(s string) string {
@@ -168,6 +171,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
 	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 	ui.HandleFunc("GET /ui/categories", s.categories)
+	ui.HandleFunc("GET /ui/income", s.income)
+	ui.HandleFunc("POST /ui/income", s.incomeAction)
 	ui.HandleFunc("POST /ui/categories", s.categoryAction)
 	ui.HandleFunc("POST /ui/savings", s.savings)
 	ui.HandleFunc("GET /ui/transfers", s.transfers)
