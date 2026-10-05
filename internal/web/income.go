@@ -79,7 +79,7 @@ func (s *Server) income(w http.ResponseWriter, r *http.Request) {
 		s.show(w, r, "income.html", "Income", "income", d)
 		return
 	}
-	d.Periods = analytics.Periods(first, last)
+	d.Periods = s.periods(first, last)
 	if q.Get("period") == "" && q.Get("from") == "" {
 		q.Set("period", "12m")
 	}

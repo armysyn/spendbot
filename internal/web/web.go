@@ -122,6 +122,7 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"isMonth":  analytics.IsMonth,
 		"swap":     swap,
 		"swapAt":   swapAt,
 		"tenge":    tenge,
@@ -467,10 +468,13 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 		s.show(w, r, "analytics.html", "Analytics", "analytics", &data)
 		return
 	}
-	data.Periods = analytics.Periods(first, last)
-	data.Current = data.Periods[0]
+	data.Periods = s.periods(first, last)
+	want := r.URL.Query().Get("period")
+	if want == "" {
+		want = "12m"
+	}
 	for _, p := range data.Periods {
-		if p.Key == r.URL.Query().Get("period") {
+		if p.Key == want || data.Current.Key == "" && p.Key == "12m" {
 			data.Current = p
 		}
 	}
@@ -680,7 +684,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 		s.show(w, r, "transfers.html", "Transfers", "transfers", &d)
 		return
 	}
-	d.Periods = analytics.Periods(first, last)
+	d.Periods = s.periods(first, last)
 	of, custom := filterFrom(q, d.Periods, s.loc)
 	f := analytics.PeopleFilter{Period: of.Period, Dir: of.Dir, Query: d.Query, Name: d.Name, Min: of.Min, Max: of.Max,
 		New: q.Get("new") == "1", Sort: q.Get("sort")}

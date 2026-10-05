@@ -7,7 +7,7 @@
 <div class="page-head">
   <div>
     <h1>{{.Current.Title | title}}</h1>
-    <div class="sub">{{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}} · {{.Current.Days}} days{{if .HasPrev}} · compared with {{date .PrevPeriod.From}} – {{date (.PrevPeriod.To.AddDate 0 0 -1)}}{{end}}</div>
+    <div class="sub">{{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}} · {{.Current.Days}} {{plural .Current.Days "day" "days"}}{{if .HasPrev}} · compared with {{date .PrevPeriod.From}} – {{date (.PrevPeriod.To.AddDate 0 0 -1)}}{{end}}</div>
   </div>
   <div class="actions">
     {{if .Older}}<a class="btn secondary sm" href="{{link "/ui/analytics" "period" .Older "nosave" $ns}}" aria-label="Previous month">{{template "icon" "left"}}</a>{{end}}
@@ -20,12 +20,12 @@
 
 <form class="toolbar" method="get" action="/ui/analytics">
   <div class="seg" role="group" aria-label="Period">
-    {{range $i, $pp := .Periods}}{{if lt $i 4}}<a class="{{if eq $pp.Key $cur.Key}}on{{end}}" href="{{link "/ui/analytics" "period" $pp.Key "nosave" $ns}}">{{$pp.Title}}</a>{{end}}{{end}}
+    {{range $pp := .Periods}}{{if not (isMonth $pp)}}<a class="{{if eq $pp.Key $cur.Key}}on{{end}}" href="{{link "/ui/analytics" "period" $pp.Key "nosave" $ns}}">{{$pp.Title}}</a>{{end}}{{end}}
   </div>
   {{if .NoSavings}}<input type="hidden" name="nosave" value="1">{{end}}
   <select name="period" aria-label="Month" onchange="this.form.submit()">
     <option value="">Pick a month…</option>
-    {{range $i, $pp := .Periods}}{{if ge $i 4}}<option value="{{$pp.Key}}" {{if eq $pp.Key $cur.Key}}selected{{end}}>{{$pp.Title}}</option>{{end}}{{end}}
+    {{range $pp := .Periods}}{{if isMonth $pp}}<option value="{{$pp.Key}}" {{if eq $pp.Key $cur.Key}}selected{{end}}>{{$pp.Title}}</option>{{end}}{{end}}
   </select>
   <noscript><button class="btn sm">Show</button></noscript>
   <a class="switch {{if .NoSavings}}on{{end}}" role="switch" aria-checked="{{if .NoSavings}}true{{else}}false{{end}}" href="{{link "/ui/analytics" "period" .Current.Key "nosave" (bool1 (not .NoSavings))}}"

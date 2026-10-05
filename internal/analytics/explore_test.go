@@ -335,3 +335,34 @@ func TestStatedSalaryAuto(t *testing.T) {
 		t.Errorf("card: %d", fl.Income)
 	}
 }
+
+func TestRecentPeriods(t *testing.T) {
+	now := time.Date(2026, 10, 7, 15, 30, 0, 0, almaty) // a Wednesday
+	first := time.Date(2021, 10, 4, 0, 0, 0, 0, almaty)
+	byKey := map[string]Period{}
+	for _, p := range Recent(now, first) {
+		byKey[p.Key] = p
+	}
+	day := func(p Period) string { return p.From.Format("2006-01-02") + "/" + p.To.Format("2006-01-02") }
+	for key, want := range map[string]string{
+		"today": "2026-10-07/2026-10-08",
+		"week":  "2026-10-05/2026-10-08", // from Monday
+		"month": "2026-10-01/2026-10-08",
+	} {
+		if got := day(byKey[key]); got != want {
+			t.Errorf("%s: %s, want %s", key, got, want)
+		}
+	}
+	for key, want := range map[string]string{
+		"today": "2026-10-06/2026-10-07", // yesterday
+		"week":  "2026-09-28/2026-10-01", // the same Monday to Wednesday a week before
+		"month": "2026-09-01/2026-09-08", // the same seven days of September
+	} {
+		if got := day(byKey[key].Prev()); got != want {
+			t.Errorf("prev %s: %s, want %s", key, got, want)
+		}
+	}
+	if IsMonth(byKey["month"]) || !IsMonth(Period{Key: "2026-09"}) {
+		t.Error("IsMonth")
+	}
+}
