@@ -14,6 +14,17 @@ const (
 	Other       = "Разное"
 )
 
+// Salary is the details Kaspi prints on a top-up that came in as a salary ("salary").
+const Salary = "Зарплата"
+
+// Details of top-ups that bring the person's own money in: from a card in another bank,
+// by account number, cash put in at a Kaspi ATM or terminal.
+var OwnTopUps = []string{"С карты другого банка", "по номеру счета", "В Kaspi Банкомате", "В Kaspi Терминале"}
+
+// Words in the details of a top-up from a lender or a payment to one: microfinance
+// organisations, loan payments.
+var LoanWords = []string{"MFO", "МФО", "LOAN", "KREDIT", "КРЕДИТ", "ZAIM", "ЗАЙМ"}
+
 // Summary is a total from the statement header and the operation kind it adds up.
 type Summary struct {
 	Label   string // as printed in the header, e.g. "Покупки"

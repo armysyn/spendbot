@@ -20,6 +20,10 @@ local model through Ollama. Your data never leaves your computer unless you conn
   text, amount range and direction; sorting by date or amount; grouping by month, week, day,
   weekday, category, merchant or kind with sums; average, median and largest; CSV export; a
   category change for one purchase or all purchases of a merchant.
+- **Income** — salaries stated over the years (current and past, per employer); salary arrivals
+  found by themselves, since Kaspi marks them "Зарплата"; other income sources picked from regular
+  top-ups; month by month: income, spending, money to and from people, what was left or the
+  deficit, and a running total. Own money moved between banks and lenders do not count.
 - **Transfers** — people money went to or came from, with totals, counts and balance per
   person over any period; filters by direction, total, number of transfers and people new in
   the period; sorting by total, count, balance or date.

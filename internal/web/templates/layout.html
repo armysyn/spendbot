@@ -11,6 +11,7 @@
 <script>try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
 <style>
 :root {
+  --income: #1f8a5f;
   --bg: #f5f5f2; --surface: #ffffff; --surface-2: #f0efeb; --surface-3: #e8e6e1;
   --ink: #17171a; --ink-2: #4a4a52; --muted: #807f87; --line: #e6e4df; --line-2: #d9d7d1;
   --accent: #1f7a5a; --accent-2: #e5f1ec; --accent-ink: #ffffff;
@@ -23,6 +24,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --income: #2fa36f;
     --bg: #0e0e10; --surface: #17171a; --surface-2: #1f1f23; --surface-3: #2a2a2f;
     --ink: #f2f2f3; --ink-2: #c4c4c9; --muted: #8d8d96; --line: #2a2a2f; --line-2: #36363c;
     --accent: #5cc396; --accent-2: #173328; --accent-ink: #0b1f17;
@@ -34,6 +36,7 @@
   }
 }
 :root[data-theme="dark"] {
+  --income: #2fa36f;
   --bg: #0e0e10; --surface: #17171a; --surface-2: #1f1f23; --surface-3: #2a2a2f;
   --ink: #f2f2f3; --ink-2: #c4c4c9; --muted: #8d8d96; --line: #2a2a2f; --line-2: #36363c;
   --accent: #5cc396; --accent-2: #173328; --accent-ink: #0b1f17;
@@ -117,8 +120,8 @@ h2.section { font-size: 13px; font-weight: 600; text-transform: uppercase; lette
 .btn.big { padding: 12px 22px; font-size: 15px; }
 .btn.danger { background: transparent; color: var(--bad); border-color: var(--line-2); }
 .btn[disabled] { opacity: .5; cursor: default; }
-input[type=text], input[type=search], input[type=date], select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
-input[type=text]:focus, input[type=search]:focus, input[type=date]:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--series) 40%, transparent); border-color: var(--series); }
+input[type=text], input[type=search], input[type=date], input[type=month], select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
+input[type=text]:focus, input[type=search]:focus, input[type=date]:focus, input[type=month]:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--series) 40%, transparent); border-color: var(--series); }
 input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; vertical-align: -3px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
@@ -256,6 +259,22 @@ a.op-title:hover { text-decoration: underline; }
 .edit-pop select, .edit-pop input[type=text] { width: 100%; }
 .edit-pop label.check { font-size: 13px; display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); }
 
+/* ---- cash flow ---- */
+.flow { display: flex; align-items: stretch; gap: 6px; height: 220px; padding-top: 6px; }
+.flow .m { flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 2px; border-radius: 6px; text-decoration: none; }
+.flow .m:hover { background: var(--surface-2); }
+.flow .b { width: 42%; max-width: 16px; border-radius: 3px 3px 0 0; min-height: 0; }
+.flow .inc { background: var(--income); } .flow .spd { background: var(--series); }
+.bal { display: flex; gap: 6px; height: 120px; position: relative; }
+.bal::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--line-2); }
+.bal .m { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.bal .up, .bal .dn { height: 50%; display: flex; justify-content: center; }
+.bal .up { align-items: flex-end; } .bal .dn { align-items: flex-start; }
+.bal .b { width: 46%; max-width: 18px; }
+.bal .up .b { background: var(--income); border-radius: 3px 3px 0 0; }
+.bal .dn .b { background: var(--bad); border-radius: 0 0 3px 3px; }
+.net-pos { color: var(--good); } .net-neg { color: var(--bad); }
+
 /* ---- ask in plain words ---- */
 .ask { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; margin-bottom: 14px; padding: 12px 14px;
   background: linear-gradient(120deg, color-mix(in srgb, var(--series) 10%, var(--surface)), var(--surface) 55%); }
@@ -329,6 +348,7 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     <a href="/ui" {{if eq .Nav "home"}}class="on" aria-current="page"{{end}}>{{template "icon" "home"}}Home{{if .Open}}<span class="count" title="merchants waiting for an answer">{{.Open}}</span>{{end}}</a>
     <a href="/ui/operations" {{if eq .Nav "operations"}}class="on" aria-current="page"{{end}}>{{template "icon" "ops"}}Operations</a>
     <a href="/ui/analytics" {{if eq .Nav "analytics"}}class="on" aria-current="page"{{end}}>{{template "icon" "chart"}}Analytics</a>
+    <a href="/ui/income" {{if eq .Nav "income"}}class="on" aria-current="page"{{end}}>{{template "icon" "wallet"}}Income</a>
     <a href="/ui/categories" {{if eq .Nav "categories"}}class="on" aria-current="page"{{end}}>{{template "icon" "tag"}}Categories</a>
     <a href="/ui/transfers" {{if eq .Nav "transfers"}}class="on" aria-current="page"{{end}}>{{template "icon" "people"}}Transfers</a>
     <a href="/ui/settings" {{if eq .Nav "settings"}}class="on" aria-current="page"{{end}}>{{template "icon" "settings"}}Settings</a>

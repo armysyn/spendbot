@@ -251,3 +251,65 @@ func TestCategoriesMatchDashboard(t *testing.T) {
 		}
 	}
 }
+
+func TestCashFlow(t *testing.T) {
+	st := testStore(t)
+	seed(t, st)
+	ctx := context.Background()
+	add := func(key, who string, at time.Time, amount int64, kind string) {
+		if _, _, err := st.InsertTx(ctx, store.Tx{ExternalKey: key, OccurredAt: at, AmountMinor: amount * tg, Currency: "KZT",
+			MerchantRaw: who, MerchantNorm: merchant.Normalize(who), Kind: kind, Source: store.SourceImport,
+			Status: store.StatusInfo, CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("s1", kaspi.Salary, day(8, 10), -400_000, kaspi.TopUp)
+	add("s2", kaspi.Salary, day(9, 10), -400_000, kaspi.TopUp)
+	add("c1", "Client C.", day(9, 15), -50_000, kaspi.TopUp)
+	rows := ledger(t, st)
+	p := Period{From: time.Date(2026, 8, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty)}
+	sal := []store.SalaryPeriod{{From: "2026-01", To: "2026-08", AmountMinor: 450_000 * tg}, {From: "2026-09", AmountMinor: 500_000 * tg}}
+	d := Build(rows, p, nil)
+
+	fl := CashFlow(rows, FlowFilter{Period: p, Sources: map[string]bool{"Client C.": true}, Salaries: sal})
+	if fl.Salary != 800_000*tg || fl.Other != 50_000*tg || fl.Income != 850_000*tg || len(fl.Arrivals) != 2 {
+		t.Fatalf("income: %+v", fl)
+	}
+	if fl.Spend != d.Totals.Spend || fl.Out != fl.Spend {
+		t.Errorf("spending %d, analytics %d", fl.Spend, d.Totals.Spend)
+	}
+	if fl.Declared != 950_000*tg || fl.Months[0].Declared != 450_000*tg || fl.Months[1].Declared != 500_000*tg {
+		t.Errorf("declared: %d %+v", fl.Declared, fl.Months)
+	}
+	if fl.Net != fl.Income-fl.Spend || fl.Months[1].Cumulative != fl.Net {
+		t.Errorf("net %d, running %d", fl.Net, fl.Months[1].Cumulative)
+	}
+	// the stated basis takes salaries as stated
+	if dec := CashFlow(rows, FlowFilter{Period: p, Salaries: sal, Basis: BasisDeclared}); dec.Income != 950_000*tg {
+		t.Errorf("declared basis: %d", dec.Income)
+	}
+	// with people: the 100,000 transfer to Aigerim goes out; the 300,000 top-up "From Kaspi
+	// Deposit" is own money, not a person, so it does not come back as money from people
+	pp := CashFlow(rows, FlowFilter{Period: p, Sources: map[string]bool{"Client C.": true}, People: true})
+	if pp.PeopleOut != 100_000*tg || pp.PeopleIn != 0 || pp.Out != fl.Spend+100_000*tg {
+		t.Errorf("people: out %d in %d total %d", pp.PeopleOut, pp.PeopleIn, pp.Out)
+	}
+	if c := IncomeCandidates(rows, map[string]bool{"Client C.": true}, day(9, 30)); len(c) == 0 || c[0].Name != "Client C." || !c[0].Counted {
+		t.Errorf("candidates: %+v", c)
+	}
+}
+
+func TestIncomeKinds(t *testing.T) {
+	for d, want := range map[string]bool{"Aigerim A.": true, "Анна-Мария К.": true, "Әлия Б.": true, "Анна Мария Ли Б.": true,
+		"С карты другого банка": false, "MFO EXAMPLE LLP": false, "На карту Example Bank*0000": false, "Иван И.,  Example Bank": false} {
+		if IsPerson(d) != want {
+			t.Errorf("IsPerson(%q) = %v", d, !want)
+		}
+	}
+	if !IsOwnMoney("С карты другого банка") || !IsOwnMoney(`по номеру счета АО "Банк"`) || IsOwnMoney("Aigerim A.") {
+		t.Error("own money")
+	}
+	if !IsLoan("MFO EXAMPLE LLP") || !IsLoan("На карту другого банка LOAN PAYMENT") || IsLoan("Aigerim A.") {
+		t.Error("loans")
+	}
+}
