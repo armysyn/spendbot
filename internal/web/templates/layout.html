@@ -504,6 +504,8 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
       const a = from, b = to || from;
       sel.textContent = +a === +b ? human(a) : human(a) + ' – ' + human(b);
     };
+    // build makes the two months; paint only moves the highlight, so the day under the
+    // pointer stays the same element while picking.
     const month = start => {
       const m = document.createElement('div'); m.className = 'dp-month';
       const t = document.createElement('button'); t.type = 'button'; t.className = 'dp-title';
@@ -511,15 +513,13 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
       t.addEventListener('click', () => {
         from = new Date(start); to = new Date(start.getFullYear(), start.getMonth() + 1, 0);
         if (to > today) to = new Date(today);
-        picking = false; draw();
+        picking = false; hover = null; paint();
       });
       m.appendChild(t);
       const g = document.createElement('div'); g.className = 'dp-grid';
       for (const w of ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']) { const s = document.createElement('span'); s.className = 'dp-wd'; s.textContent = w; g.appendChild(s); }
       const lead = (start.getDay() + 6) % 7;
       for (let i = 0; i < lead; i++) g.appendChild(document.createElement('span'));
-      const a = from, b = picking && hover ? hover : (to || from);
-      const lo = a && b && b < a ? b : a, hi = a && b && b < a ? a : b;
       for (let d = new Date(start); d.getMonth() === start.getMonth(); d.setDate(d.getDate() + 1)) {
         const c = document.createElement('button'); c.type = 'button'; c.className = 'dp-day'; c.textContent = d.getDate();
         const day = new Date(d), key = iso(day);
@@ -528,23 +528,34 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
         if ((min && day < min) || (max && day > max)) c.classList.add('out');
         if (+day === +today) c.classList.add('today');
         if (day > today) { c.classList.add('future'); c.disabled = true; }
-        if (lo && day >= lo && day <= hi) c.classList.add('in');
-        if (lo && +day === +lo) c.classList.add('edge', 'start');
-        if (hi && +day === +hi) c.classList.add('edge', 'end');
         c.addEventListener('click', () => {
-          if (!picking) { from = day; to = null; picking = true; }
-          else { if (day < from) { to = from; from = day; } else { to = day; } picking = false; }
-          draw();
+          if (!picking) { from = day; to = null; picking = true; hover = day; }
+          else { if (day < from) { to = from; from = day; } else { to = day; } picking = false; hover = null; }
+          paint();
         });
-        c.addEventListener('mouseenter', () => { if (picking) { hover = day; draw(); } });
+        c.addEventListener('mouseenter', () => { if (picking) { hover = day; paint(); } });
         g.appendChild(c);
       }
       m.appendChild(g);
       return m;
     };
+    const paint = () => {
+      const a = from, b = picking && hover ? hover : (to || from);
+      const lo = a && b && b < a ? b : a, hi = a && b && b < a ? a : b;
+      const l = lo ? iso(lo) : '', h = hi ? iso(hi) : '';
+      box.querySelectorAll('.dp-day').forEach(c => {
+        const k = c.dataset.day;
+        c.classList.toggle('in', !!l && k >= l && k <= h);
+        c.classList.toggle('edge', k === l || k === h);
+        c.classList.toggle('start', k === l);
+        c.classList.toggle('end', k === h);
+      });
+      if (picking) sel.textContent = 'Now pick the last day — or the same day for one day';
+      else label();
+    };
     const draw = () => {
       box.replaceChildren(month(view), month(new Date(view.getFullYear(), view.getMonth() + 1, 1)));
-      label();
+      paint();
     };
     const open = () => { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); draw(); };
     const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); picking = false; hover = null; };
@@ -554,11 +565,13 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     dp.querySelector('.dp-cancel').addEventListener('click', close);
     dp.querySelector('.dp-apply').addEventListener('click', () => {
       if (!from) return;
+      if (picking) { to = from; picking = false; }
       const q = new URLSearchParams(dp.dataset.state);
       q.set('from', iso(from)); q.set('to', iso(to || from));
       location.href = dp.dataset.path + '?' + q.toString();
     });
-    document.addEventListener('click', e => { if (!pop.hidden && !dp.contains(e.target)) close(); });
+    // the path is taken when the click starts, so a day redrawn meanwhile still counts as inside
+    document.addEventListener('click', e => { if (!pop.hidden && !e.composedPath().includes(dp)) close(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) close(); });
   });
 })();
