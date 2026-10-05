@@ -48,6 +48,7 @@ func IsLoan(details string) bool {
 
 // Income bases for FlowFilter.Basis.
 const (
+	BasisAuto     = "auto"     // what arrived on the card; the stated salary for a month nothing arrived in
 	BasisCard     = "card"     // salary as it arrived on the card
 	BasisDeclared = "declared" // salary as stated, for salaries paid to another bank
 )
@@ -75,6 +76,7 @@ type MonthFlow struct {
 	Salary     int64 // arrived on the card as salary
 	SalaryN    int
 	Declared   int64 // the stated salary for the month
+	Stated     bool  // the income took the stated salary, not what arrived
 	Other      int64 // from income sources
 	Income     int64 // counted income: salary on the chosen basis plus other income
 	Spend      int64
@@ -121,10 +123,11 @@ func DeclaredFor(ps []store.SalaryPeriod, month string) int64 {
 	return sum
 }
 
-// CurrentSalary is the stated salary of the latest month with one, and its periods.
-func CurrentSalary(ps []store.SalaryPeriod) (amount int64, current []store.SalaryPeriod) {
+// CurrentSalary is the stated salary for a month ('YYYY-MM', usually this one) and the periods
+// covering it: an open one, or one that ends later.
+func CurrentSalary(ps []store.SalaryPeriod, month string) (amount int64, current []store.SalaryPeriod) {
 	for _, p := range ps {
-		if p.Current() {
+		if p.From <= month && (p.To == "" || month <= p.To) {
 			amount += p.AmountMinor
 			current = append(current, p)
 		}
@@ -135,8 +138,8 @@ func CurrentSalary(ps []store.SalaryPeriod) (amount int64, current []store.Salar
 // CashFlow adds up income and spending by month.
 func CashFlow(all []store.LedgerRow, f FlowFilter) Flow {
 	fl := Flow{Basis: f.Basis, People: f.People}
-	if fl.Basis != BasisDeclared {
-		fl.Basis = BasisCard
+	if fl.Basis != BasisDeclared && fl.Basis != BasisCard {
+		fl.Basis = BasisAuto
 	}
 	p := f.Period
 	loc := p.From.Location()
@@ -184,8 +187,8 @@ func CashFlow(all []store.LedgerRow, f FlowFilter) Flow {
 	for i := range fl.Months {
 		m := &fl.Months[i]
 		salary := m.Salary
-		if fl.Basis == BasisDeclared {
-			salary = m.Declared
+		if fl.Basis == BasisDeclared || fl.Basis == BasisAuto && m.Salary == 0 && m.Declared > 0 {
+			salary, m.Stated = m.Declared, true
 		}
 		m.Income = salary + m.Other
 		m.Out = m.Spend

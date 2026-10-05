@@ -35,7 +35,7 @@
 {{with $s.Flow}}
 <a class="card" href="{{link "/ui/income" "period" $s.Month.Key}}" style="display: flex; gap: 10px 28px; flex-wrap: wrap; align-items: baseline; margin-top: 14px; text-decoration: none; padding: 14px 20px">
   <span class="muted small">{{template "icon" "wallet"}}</span>
-  <span>Income <b class="num good">{{kzt .Income}}</b></span>
+  <span>Income <b class="num good">{{kzt .Income}}</b>{{range .Months}}{{if .Stated}} <span class="muted tiny">expected salary</span>{{end}}{{end}}</span>
   <span>Went out <b class="num">{{kzt .Out}}</b> <span class="muted tiny">spending and transfers to people</span></span>
   <span>{{if lt .Net 0}}In the red <b class="num net-neg">{{kzt (abs .Net)}}</b>{{else}}Left <b class="num net-pos">+{{kzt .Net}}</b>{{end}}</span>
   <span class="muted small" style="margin-left: auto">income →</span>

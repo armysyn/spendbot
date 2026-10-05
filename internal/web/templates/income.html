@@ -11,7 +11,7 @@
 {{if not .Empty}}
 <form class="toolbar" method="get" action="/ui/income">
   {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}
-  {{if eq .Basis "declared"}}<input type="hidden" name="basis" value="declared">{{end}}
+  {{if ne .Basis "auto"}}<input type="hidden" name="basis" value="{{.Basis}}">{{end}}
   {{if .WithSavings}}<input type="hidden" name="withsave" value="1">{{end}}
   {{if not .People}}<input type="hidden" name="people" value="0">{{end}}
   <select name="period" aria-label="Period" onchange="if (this.form.from) { this.form.from.remove(); this.form.to.remove() } this.form.submit()">
@@ -19,8 +19,9 @@
     {{range .Periods}}<option value="{{.Key}}" {{if and (not $.Custom) (eq .Key $.Current.Key)}}selected{{end}}>{{.Title}}</option>{{end}}
   </select>
   <div class="seg" role="group" aria-label="Salary basis">
-    <a class="{{if eq .Basis "card"}}on{{end}}" href="{{swapAt "/ui/income" $st "basis" ""}}" data-tip="Salary as it arrived on the Kaspi card">Salary on the card</a>
-    <a class="{{if eq .Basis "declared"}}on{{end}}" href="{{swapAt "/ui/income" $st "basis" "declared"}}" data-tip="Salary as you stated it below — for a salary paid to another bank">Stated salary</a>
+    <a class="{{if eq .Basis "auto"}}on{{end}}" href="{{swapAt "/ui/income" $st "basis" ""}}" data-tip="What arrived on the card; for a month nothing arrived in yet — the salary you stated">Auto</a>
+    <a class="{{if eq .Basis "card"}}on{{end}}" href="{{swapAt "/ui/income" $st "basis" "card"}}" data-tip="Only salary that arrived on the Kaspi card">On the card</a>
+    <a class="{{if eq .Basis "declared"}}on{{end}}" href="{{swapAt "/ui/income" $st "basis" "declared"}}" data-tip="Salary as you stated it below — for a salary paid to another bank">Stated</a>
   </div>
   <a class="switch {{if not .WithSavings}}on{{end}}" role="switch" aria-checked="{{if .WithSavings}}false{{else}}true{{end}}" href="{{swapAt "/ui/income" $st "withsave" (bool1 (not .WithSavings))}}"
      data-tip="Money put into savings categories (deposits, investments) is kept, not spent"><span class="knob"></span>Savings are not spending</a>
@@ -29,7 +30,7 @@
 </form>
 
 <div class="kpis stats">
-  <div class="kpi"><div class="label">Salary now</div><div class="value num">{{if .SalaryNow}}{{kzt .SalaryNow}}{{else}}<span class="muted">not set</span>{{end}}</div><div class="note">{{if .Employers}}{{join .Employers ", "}} · {{end}}per month{{if not .SalaryNow}} — <a href="#salary">add it below</a>{{end}}</div></div>
+  <div class="kpi"><div class="label">Salary now</div><div class="value num">{{if .SalaryNow}}{{kzt .SalaryNow}}{{else}}<span class="muted">not set</span>{{end}}</div><div class="note">{{if .Employers}}{{join .Employers ", "}} · {{end}}per month{{with .SalaryUntil}} · until {{.}}{{end}}{{if not .SalaryNow}} — <a href="#salary">add it below</a>{{end}}</div></div>
   <div class="kpi"><div class="label">Last salary on the card</div>{{with .LastArrival}}<div class="value num good">+{{kzt (abs .Amount)}}</div><div class="note">{{wday .At}} {{date .At}}</div>{{else}}<div class="value muted" style="font-size: 16px">none found</div>{{end}}</div>
   <div class="kpi"><div class="label">Income</div><div class="value num good">{{kzt $fl.Income}}</div><div class="note">{{kzt $fl.AvgIncome}} a month on average</div></div>
   <div class="kpi"><div class="label">{{if $fl.People}}Went out{{else}}Spent{{end}}</div><div class="value num">{{kzt $fl.Out}}</div><div class="note">{{if $fl.People}}spending {{compact $fl.Spend}} + to people {{compact (sub $fl.PeopleOut $fl.PeopleIn)}} · {{end}}{{kzt $fl.AvgSpend}} a month</div></div>
@@ -43,7 +44,7 @@
   <div class="flow" role="img" aria-label="Income and spending by month">
     {{range $fl.Months}}
     <a class="m" href="{{link "/ui/operations" "type" "all" "from" (ymd .From) "to" (lastDay .To)}}"
-       data-tip="{{.Label}}{{if .Partial}} (part){{end}} · income {{kzt .Income}} · {{if $fl.People}}went out {{kzt .Out}} (spent {{kzt .Spend}}, to people {{kzt (sub .PeopleOut .PeopleIn)}}){{else}}spent {{kzt .Spend}}{{end}} · {{if lt .Net 0}}in the red {{kzt (abs .Net)}}{{else}}left {{kzt .Net}}{{end}}">
+       data-tip="{{.Label}}{{if .Partial}} (part){{end}} · income {{kzt .Income}}{{if .Stated}} (stated salary){{end}} · {{if $fl.People}}went out {{kzt .Out}} (spent {{kzt .Spend}}, to people {{kzt (sub .PeopleOut .PeopleIn)}}){{else}}spent {{kzt .Spend}}{{end}} · {{if lt .Net 0}}in the red {{kzt (abs .Net)}}{{else}}left {{kzt .Net}}{{end}}">
       <span class="b inc" style="height: calc({{width .IncPct}} * 0.95)"></span><span class="b spd" style="height: calc({{width .SpendPct}} * 0.95)"></span>
     </a>
     {{end}}
@@ -68,7 +69,7 @@
     {{range .ShownMonths}}<tr>
       <td>{{.Label}}{{if .Partial}} <span class="muted tiny">part</span>{{end}}</td>
       <td class="num">{{if .Salary}}{{kzt .Salary}}{{if gt .SalaryN 1}} <span class="muted tiny">· {{.SalaryN}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
-      <td class="num muted">{{if .Declared}}{{kzt .Declared}}{{else}}—{{end}}</td>
+      <td class="num muted">{{if .Declared}}{{kzt .Declared}}{{if .Stated}} <span class="tag" data-tip="Nothing arrived on the card this month, so the stated salary counts as income">counted</span>{{end}}{{else}}—{{end}}</td>
       <td class="num">{{if .Other}}{{kzt .Other}}{{else}}<span class="muted">—</span>{{end}}</td>
       <td class="num">{{kzt .Spend}}</td>{{if $fl.People}}<td class="num" data-tip="sent {{kzt .PeopleOut}} · received {{kzt .PeopleIn}}">{{kzt (sub .PeopleOut .PeopleIn)}}</td>{{end}}
       <td class="num {{if lt .Net 0}}net-neg{{else}}net-pos{{end}}">{{if gt .Net 0}}+{{end}}{{kzt .Net}}</td>

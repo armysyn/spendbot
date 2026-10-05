@@ -27,6 +27,7 @@ type incomeData struct {
 	Flow        analytics.Flow
 	Salaries    []store.SalaryPeriod
 	SalaryNow   int64
+	SalaryUntil string // the earliest end among the current salaries; empty — open
 	Employers   []string
 	LastArrival *analytics.Op
 	Candidates  []analytics.IncomeCandidate
@@ -46,10 +47,13 @@ func (s *Server) income(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var current []store.SalaryPeriod
-	d.SalaryNow, current = analytics.CurrentSalary(d.Salaries)
+	d.SalaryNow, current = analytics.CurrentSalary(d.Salaries, d.ThisMonth)
 	for _, p := range current {
 		if p.Employer != "" {
 			d.Employers = append(d.Employers, p.Employer)
+		}
+		if p.To != "" && (d.SalaryUntil == "" || p.To < d.SalaryUntil) {
+			d.SalaryUntil = p.To
 		}
 	}
 	names, err := s.st.IncomeSources(ctx)

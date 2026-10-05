@@ -313,3 +313,25 @@ func TestIncomeKinds(t *testing.T) {
 		t.Error("loans")
 	}
 }
+
+// A salary stated with an end is current while the month is inside it; Auto counts it for a
+// month nothing arrived in yet.
+func TestStatedSalaryAuto(t *testing.T) {
+	ps := []store.SalaryPeriod{{From: "2026-10", To: "2026-12", AmountMinor: 2_300_000 * tg, Employer: "Acme"}}
+	if amt, cur := CurrentSalary(ps, "2026-10"); amt != 2_300_000*tg || len(cur) != 1 {
+		t.Errorf("current: %d %+v", amt, cur)
+	}
+	if amt, _ := CurrentSalary(ps, "2027-01"); amt != 0 {
+		t.Errorf("after the end: %d", amt)
+	}
+	st := testStore(t)
+	seed(t, st)
+	rows := ledger(t, st)
+	oct := Period{Key: "2026-10", From: time.Date(2026, 10, 1, 0, 0, 0, 0, almaty), To: time.Date(2026, 10, 6, 0, 0, 0, 0, almaty)}
+	if fl := CashFlow(rows, FlowFilter{Period: oct, Salaries: ps}); fl.Income != 2_300_000*tg || !fl.Months[0].Stated || fl.Basis != BasisAuto {
+		t.Errorf("auto: %+v", fl)
+	}
+	if fl := CashFlow(rows, FlowFilter{Period: oct, Salaries: ps, Basis: BasisCard}); fl.Income != 0 {
+		t.Errorf("card: %d", fl.Income)
+	}
+}
