@@ -1,0 +1,54 @@
+{{template "head" .Page}}
+<div class="page-head"><div><h1>Security</h1><div class="sub">Who can open spendbot</div></div></div>
+{{template "flash" .Flash}}
+
+<div class="grid g2">
+<div class="card">
+  <div class="card-head"><h3>Password</h3>{{if .Has}}<span class="pill ok">{{template "icon" "shield"}} on</span>{{else}}<span class="pill up">off</span>{{end}}</div>
+  {{if not .Has}}
+  <div class="flash warn" style="margin-top: 0">{{template "icon" "shield"}}<div>Without a password, anyone on your Wi-Fi or network who knows the address can open spendbot and see every operation.</div></div>
+  {{else if .FromEnv}}
+  <p class="muted small" style="margin-top: 0">The password comes from <code>WEB_PASSWORD</code> in the settings file. Set one here to replace it: the one set here wins.</p>
+  {{else}}
+  <p class="muted small" style="margin-top: 0">Stored as a salted PBKDF2-SHA256 hash, never as the password itself. After 5 wrong tries from one address, sign-in waits a minute, then longer. Forgot it? Run <code>spendbot reset-password</code> on this computer.</p>
+  {{end}}
+  <form method="post" action="/ui/security" style="display: grid; gap: 10px">
+    <input type="hidden" name="action" value="set">
+    {{if .Has}}<div class="field"><label for="cur">Current password</label><input id="cur" type="password" name="current" autocomplete="current-password" required></div>{{end}}
+    <div class="grid g2" style="gap: 10px">
+      <div class="field"><label for="np">{{if .Has}}New password{{else}}Password{{end}}</label><input id="np" type="password" name="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="field"><label for="rp">Repeat it</label><input id="rp" type="password" name="repeat" minlength="8" autocomplete="new-password" required></div>
+    </div>
+    <div class="muted tiny">At least 8 characters. A few random words are easy to remember and hard to guess.</div>
+    <div><button class="btn sm">{{if .Has}}Change password{{else}}Set password{{end}}</button></div>
+  </form>
+  {{if .OnPage}}
+  <details class="more" style="margin-top: 14px"><summary>Remove the password</summary>
+    <form method="post" action="/ui/security" style="display: grid; gap: 10px; margin-top: 10px">
+      <input type="hidden" name="action" value="remove">
+      <div class="field"><label for="rc">Current password</label><input id="rc" type="password" name="current" autocomplete="current-password" required></div>
+      <div><button class="btn sm danger" onclick="return confirm('Remove the password? Anyone on your network will be able to open spendbot.')">Remove password</button></div>
+    </form>
+  </details>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Signed-in browsers</h3><span class="muted tiny">stay signed in for 30 days of use</span></div>
+  {{if .Sessions}}
+  <div class="ops" style="box-shadow: none">
+    {{range .Sessions}}
+    <div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
+      <div class="op-main"><span class="op-title" style="font-weight: 500">{{if .Agent}}{{.Agent}}{{else}}a browser{{end}}</span>
+        <div class="op-meta"><span>signed in {{datetime .CreatedAt}} · last used {{datetime .SeenAt}}</span></div></div>
+      {{if eq .ID $.CurrentID}}<span class="pill ok">this one</span>{{end}}
+    </div>
+    {{end}}
+  </div>
+  <form method="post" action="/ui/security" style="margin-top: 12px"><input type="hidden" name="action" value="signout_others">
+    <button class="btn sm secondary">Sign out every other browser</button></form>
+  {{else}}<div class="empty small">{{if .Has}}No browser is signed in.{{else}}Nobody signs in while there is no password.{{end}}</div>{{end}}
+  <p class="muted tiny">The iPhone automation for Apple Wallet uses its own token (Settings), not this password.</p>
+</div>
+</div>
+{{template "foot" .}}

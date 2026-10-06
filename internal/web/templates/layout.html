@@ -78,6 +78,8 @@ a { color: inherit; }
 .theme:hover { background: var(--surface-2); color: var(--ink); }
 main { padding: 28px 36px 80px; max-width: 1180px; width: 100%; }
 
+.app.bare { grid-template-columns: minmax(0, 1fr); }
+.app.bare main { max-width: 420px; margin: 12vh auto 0; }
 @media (max-width: 960px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .side { position: sticky; z-index: 5; height: auto; flex-direction: row; align-items: center; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--line); gap: 6px; }
@@ -383,8 +385,8 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
-<body><div class="app">
-<aside class="side">
+<body><div class="app{{if .Bare}} bare{{end}}">
+{{if not .Bare}}<aside class="side">
   <a class="brand" href="/ui"><span class="brand-mark">S</span><span>spendbot</span></a>
   <nav class="nav" aria-label="Main">
     <a href="/ui" {{if eq .Nav "home"}}class="on" aria-current="page"{{end}}>{{template "icon" "home"}}Home{{if .Open}}<span class="count" title="merchants waiting for an answer">{{.Open}}</span>{{end}}</a>
@@ -394,15 +396,18 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     <a href="/ui/categories" {{if eq .Nav "categories"}}class="on" aria-current="page"{{end}}>{{template "icon" "tag"}}Categories</a>
     <a href="/ui/transfers" {{if eq .Nav "transfers"}}class="on" aria-current="page"{{end}}>{{template "icon" "people"}}Transfers</a>
     <a href="/ui/issues" {{if eq .Nav "issues"}}class="on" aria-current="page"{{end}}>{{template "icon" "flag"}}Issues{{if .Issues}}<span class="count muted-count" title="open issues">{{.Issues}}</span>{{end}}</a>
+    <a href="/ui/security" {{if eq .Nav "security"}}class="on" aria-current="page"{{end}}>{{template "icon" "shield"}}Security{{if .NoPassword}}<span class="count muted-count" title="no password">!</span>{{end}}</a>
     <a href="/ui/settings" {{if eq .Nav "settings"}}class="on" aria-current="page"{{end}}>{{template "icon" "settings"}}Settings</a>
   </nav>
   <div class="side-foot">
     <a class="btn secondary" href="/ui#upload">{{template "icon" "upload"}}Upload statement</a>
     <a class="theme" href="{{link "/ui/issues" "new" "1" "page" .Path}}" style="text-decoration: none">{{template "icon" "flag"}}<span>Report a problem</span></a>
     <button class="theme" id="theme" type="button" aria-label="Switch theme">{{template "icon" "moon"}}<span>Theme: auto</span></button>
+    {{if .SignedIn}}<form method="post" action="/ui/logout"><button class="theme" type="submit" style="width: 100%">{{template "icon" "left"}}<span>Sign out</span></button></form>{{end}}
   </div>
-</aside>
+</aside>{{end}}
 <main>
+{{if and .NoPassword (ne .Nav "security")}}<div class="flash warn" role="note">{{template "icon" "shield"}}<div><b>No password.</b> Anyone on your network can open spendbot and see your money. <a href="/ui/security">Set a password</a></div></div>{{end}}
 {{end}}
 
 {{define "flash"}}{{with .}}<div class="flash" role="status">{{template "icon" "check"}}<div>{{.}}</div></div>{{end}}{{end}}

@@ -1,0 +1,14 @@
+{{template "head" .Page}}
+<div style="text-align: center; margin-bottom: 22px">
+  <span class="brand-mark" style="width: 52px; height: 52px; font-size: 26px; border-radius: 15px; margin: 0 auto 14px">S</span>
+  <h1 style="margin: 0; font-size: 26px">spendbot</h1>
+  <div class="muted small">Type the password to open your money</div>
+</div>
+<form class="card" method="post" action="/ui/login" style="display: grid; gap: 12px">
+  {{with .Error}}<div class="flash bad" style="margin: 0" role="alert">{{template "icon" "x"}}<div>{{.}}</div></div>{{end}}
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field"><label for="pw">Password</label><input id="pw" type="password" name="password" autocomplete="current-password" required autofocus></div>
+  <button class="btn big" style="justify-content: center">Sign in</button>
+</form>
+<p class="muted tiny" style="text-align: center; margin-top: 14px">Forgot it? On the computer running spendbot, run <code>spendbot reset-password</code>, then set a new one on the Security page.</p>
+{{template "foot" .}}

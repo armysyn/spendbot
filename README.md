@@ -41,6 +41,9 @@ local model through Ollama. Your data never leaves your computer unless you conn
   double charges, growing categories, saving tips.
 - **Transfers** — search by recipient name, sent and received per person; transfers to a
   person can count as spending in a category (rent).
+- **Security** — a password for the page with a sign-in page, 30-day sessions, sign-out
+  everywhere and a slow-down after wrong guesses; stored as a salted PBKDF2 hash. Without one,
+  every page warns that anyone on the network can open it. Forgot it: `spendbot reset-password`.
 - **Issues** — problems and wishes about spendbot written down on the site, with priority,
   the page they are about, comments, closing and search; kept locally for now.
 - **Apple Wallet + Telegram** — the Shortcuts "Transaction" automation sends each payment and
@@ -70,7 +73,7 @@ variables take precedence. Templates: `deploy/dist/spendbot.env` (one computer) 
 | --- | --- | --- |
 | `DATA_DIR`, `DB_PATH` | `data/` next to the binary | database and backups |
 | `LISTEN_ADDR`, `PUBLIC_URL` | `:8080`, `http://localhost:8080` | page address and links in Telegram |
-| `WEB_PASSWORD` | empty — no password | needed when the page is open to the network |
+| `WEB_PASSWORD` | empty — no password | a password for the page; one set on the Security page replaces it |
 | `TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_CHAT_ID` | empty — no bot | the bot answers only this chat |
 | `INGEST_TOKEN` | generated on first start | token for the iPhone automation, shown on Settings |
 | `ANALYSIS_LLM_URL`, `ANALYSIS_LLM_MODEL` | Ollama on localhost, `qwen2.5:7b` | local model; `ANALYSIS_LLM=off` disables it |
