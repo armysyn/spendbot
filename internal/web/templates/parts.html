@@ -66,3 +66,26 @@
   <div class="thinking-line" aria-live="polite"><span class="dots"><i></i><i></i><i></i></span><span class="thinking-text">Reading your request…</span><span class="thinking-time muted tiny"></span></div>
 </form>
 {{end}}
+
+{{/* The calendar: one day or a range. Takes a picker (see pages.go). Without JavaScript it is two date fields. */}}
+{{define "datepicker"}}
+<div class="dp" data-path="{{.Path}}" data-state="{{.State}}" data-from="{{.From}}" data-to="{{.To}}" data-min="{{.Min}}" data-max="{{.Max}}" data-days="{{.Days}}">
+  <button type="button" class="btn secondary sm dp-btn{{if .Custom}} on{{end}}" aria-haspopup="dialog" aria-expanded="false">{{template "icon" "calendar"}}<span class="dp-label">{{if .Custom}}{{.Label}}{{else}}Pick dates{{end}}</span></button>
+  <div class="dp-pop" role="dialog" aria-label="Pick a day or a range" hidden>
+    <div class="dp-head">
+      <button type="button" class="btn ghost sm dp-prev" aria-label="Previous month">{{template "icon" "left"}}</button>
+      <div class="dp-hint muted small">Click a day, then another day for a range</div>
+      <button type="button" class="btn ghost sm dp-next" aria-label="Next month">{{template "icon" "right"}}</button>
+    </div>
+    <div class="dp-months"></div>
+    <div class="dp-foot">
+      <span class="dp-sel small"></span>
+      <span class="legend" style="margin: 0"><span><span class="dp-dot-sample"></span>spending</span></span>
+      <span style="flex: 1"></span>
+      <button type="button" class="btn ghost sm dp-cancel">Cancel</button>
+      <button type="button" class="btn sm dp-apply">Show</button>
+    </div>
+  </div>
+  <noscript><form class="actions" method="get" action="{{.Path}}"><input type="date" name="from" value="{{.From}}" aria-label="From"><input type="date" name="to" value="{{.To}}" aria-label="To"><button class="btn sm secondary">Show</button></form></noscript>
+</div>
+{{end}}

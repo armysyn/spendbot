@@ -5,11 +5,14 @@
     <h1>Categories</h1>
     <div class="sub">{{if .Empty}}No spending yet{{else}}{{title .Current.Title}} · {{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}}{{if .HasPrev}} · compared with {{date .PrevPeriod.From}} – {{date (.PrevPeriod.To.AddDate 0 0 -1)}}{{end}}{{end}}</div>
   </div>
+  <div class="actions">
+  {{if not .Empty}}{{template "datepicker" .Picker}}{{end}}
   <form class="actions" method="post" action="/ui/categories">
     <input type="hidden" name="action" value="add">
     <input type="text" name="name" placeholder="New category, e.g. Rent" maxlength="40" required aria-label="New category name">
     <button class="btn sm">{{template "icon" "plus"}}Add</button>
   </form>
+  </div>
 </div>
 {{template "flash" .Flash}}
 

@@ -5,6 +5,7 @@
     <h1>Income</h1>
     <div class="sub">{{if .Empty}}No operations yet{{else}}{{title .Current.Title}} · {{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}}{{end}}</div>
   </div>
+  {{if not .Empty}}<div class="actions">{{template "datepicker" .Picker}}</div>{{end}}
 </div>
 {{template "flash" .Flash}}
 

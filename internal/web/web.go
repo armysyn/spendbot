@@ -434,6 +434,8 @@ func plural(n int, one, many string) string {
 
 type analyticsData struct {
 	Page
+	Picker       picker
+	Custom       bool
 	Prev         analytics.Dashboard
 	HasPrev      bool
 	PrevPeriod   analytics.Period
@@ -478,6 +480,10 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 			data.Current = p
 		}
 	}
+	if p, ok := customPeriod(r.URL.Query(), s.loc); ok {
+		data.Current, data.Custom = p, true
+	}
+	data.Picker = newPicker("/ui/analytics", r.URL.Query(), data.Current, data.Custom, rows)
 	if data.Categories, err = s.st.Categories(ctx); err != nil {
 		s.fail(w, err)
 		return
@@ -640,6 +646,7 @@ type transfersData struct {
 	Ask            string
 	AI             bool
 	State          string
+	Picker         picker
 }
 
 const peoplePage = 50
@@ -697,6 +704,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 	if custom {
 		d.From, d.To = q.Get("from"), q.Get("to")
 	}
+	d.Picker = newPicker("/ui/transfers", q, d.Current, custom, rows)
 	d.Dir, d.Min, d.Max, d.New, d.Sort = f.Dir, q.Get("min"), q.Get("max"), f.New, f.Sort
 	if f.TimesMin > 0 {
 		d.TimesMin = strconv.Itoa(f.TimesMin)

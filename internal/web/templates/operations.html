@@ -5,7 +5,7 @@
     <h1>Operations</h1>
     <div class="sub">{{if .Empty}}Nothing yet{{else}}{{.Current.Title}}{{if not .Custom}} · {{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}}{{end}}{{end}}</div>
   </div>
-  {{if not .Empty}}<div class="actions"><a class="btn secondary sm" href="{{.CSV}}">{{template "icon" "download"}}Export CSV</a></div>{{end}}
+  {{if not .Empty}}<div class="actions">{{template "datepicker" .Picker}}<a class="btn secondary sm" href="{{.CSV}}">{{template "icon" "download"}}Export CSV</a></div>{{end}}
 </div>
 {{template "flash" .Flash}}
 {{if .Empty}}

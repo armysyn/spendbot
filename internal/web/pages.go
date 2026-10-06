@@ -233,6 +233,7 @@ type operationsData struct {
 	Days         []dayGroup
 	Shown        int
 	More         string // link to show more, empty when everything is shown
+	Picker       picker
 	Back         string // this page, to come back after an edit
 	CSV          string
 }
@@ -273,17 +274,76 @@ func filterFrom(q url.Values, ps []analytics.Period, loc *time.Location) (analyt
 			f.Period = p
 		}
 	}
-	from, err1 := time.ParseInLocation("2006-01-02", q.Get("from"), loc)
-	to, err2 := time.ParseInLocation("2006-01-02", q.Get("to"), loc)
-	if err1 == nil && err2 == nil && !to.Before(from) {
-		f.Period = analytics.Period{Key: "custom", From: from, To: to.AddDate(0, 0, 1)}
-		f.Period.Title = from.Format("2 Jan 2006")
-		if !to.Equal(from) {
-			f.Period.Title += " – " + to.Format("2 Jan 2006")
-		}
+	if p, ok := customPeriod(q, loc); ok {
+		f.Period = p
 		return f, true
 	}
 	return f, false
+}
+
+// customPeriod reads a range picked in the calendar: ?from=2026-09-01&to=2026-09-15, both
+// days included. A single day has from == to.
+func customPeriod(q url.Values, loc *time.Location) (analytics.Period, bool) {
+	from, err1 := time.ParseInLocation("2006-01-02", q.Get("from"), loc)
+	to, err2 := time.ParseInLocation("2006-01-02", q.Get("to"), loc)
+	if err1 != nil || err2 != nil || to.Before(from) {
+		return analytics.Period{}, false
+	}
+	p := analytics.Period{Key: "custom", From: from, To: to.AddDate(0, 0, 1), Title: from.Format("2 Jan 2006")}
+	if !to.Equal(from) {
+		p.Title += " – " + to.Format("2 Jan 2006")
+	}
+	return p, true
+}
+
+// picker is what the calendar needs: the page, the other filters to keep, the range shown,
+// the span of the data and the days with spending (marked with a dot).
+type picker struct {
+	Path, State string
+	From, To    string // the range shown, both days included
+	Min, Max    string // the first and the last day of the data
+	Days        string // days with spending, comma-separated
+	Custom      bool
+	Label       string // the picked range for the button: "8 Sep – 21 Sep 2026"
+}
+
+// rangeLabel is a short range: "8 Sep 2026", "8 – 21 Sep 2026", "28 Aug – 3 Sep 2026",
+// "28 Dec 2025 – 3 Jan 2026".
+func rangeLabel(from, to time.Time) string {
+	switch {
+	case from.Equal(to):
+		return from.Format("2 Jan 2006")
+	case from.Year() != to.Year():
+		return from.Format("2 Jan 2006") + " – " + to.Format("2 Jan 2006")
+	case from.Month() != to.Month():
+		return from.Format("2 Jan") + " – " + to.Format("2 Jan 2006")
+	}
+	return from.Format("2") + " – " + to.Format("2 Jan 2006")
+}
+
+func newPicker(path string, q url.Values, cur analytics.Period, custom bool, rows []store.LedgerRow) picker {
+	sq := cloneValues(q)
+	for _, k := range []string{"period", "from", "to", "msg", "limit", "ask"} {
+		sq.Del(k)
+	}
+	pk := picker{Path: path, State: sq.Encode(), Custom: custom,
+		From: cur.From.Format("2006-01-02"), To: cur.To.AddDate(0, 0, -1).Format("2006-01-02"),
+		Label: rangeLabel(cur.From, cur.To.AddDate(0, 0, -1))}
+	if first, last, ok := bounds(rows); ok {
+		pk.Min, pk.Max = first.Format("2006-01-02"), last.Format("2006-01-02")
+	}
+	seen := map[string]bool{}
+	var days []string
+	for _, r := range rows {
+		if analytics.IsSpend(r) && r.Amount > 0 {
+			if d := r.At.Format("2006-01-02"); !seen[d] {
+				seen[d] = true
+				days = append(days, d)
+			}
+		}
+	}
+	pk.Days = strings.Join(days, ",")
+	return pk
 }
 
 func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +373,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	if custom {
 		d.From, d.To = q.Get("from"), q.Get("to")
 	}
+	d.Picker = newPicker("/ui/operations", q, d.Current, custom, rows)
 	d.Type, d.Category, d.Merchant, d.Query = f.Type, f.Category, f.Merchant, f.Query
 	d.Min, d.Max, d.Dir, d.Repeat, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, f.Repeat, q.Get("sort"), q.Get("group")
 	d.Groupings, d.Ask, d.AI = analytics.Groupings, q.Get("ask"), s.aiReady()
@@ -562,6 +623,7 @@ type categoriesData struct {
 	Ask        string
 	AI         bool
 	State      string
+	Picker     picker
 }
 
 var categorySorts = []struct{ Key, Title string }{
@@ -606,6 +668,7 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 		if custom {
 			d.From, d.To = q.Get("from"), q.Get("to")
 		}
+		d.Picker = newPicker("/ui/categories", q, d.Current, custom, rows)
 		var exclude []string
 		if d.NoSavings {
 			if exclude, err = s.st.SavingsNames(ctx); err != nil {
