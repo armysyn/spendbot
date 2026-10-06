@@ -3,7 +3,7 @@
 {{template "flash" .Flash}}
 
 <div class="grid g2">
-<div class="card">
+<div class="card" id="model">
   <div class="card-head"><h3>Local model</h3>{{if .Model}}{{if .OllamaUp}}<span class="small"><span class="status-dot on"></span>Ollama running</span>{{else}}<span class="small"><span class="status-dot off"></span>Ollama not running</span>{{end}}{{end}}</div>
 {{if not .Model}}
   <p class="muted">The model is off (<code>ANALYSIS_LLM=off</code>). Buttons, merchant memory and reports work without it; there will be no guesses or tips.</p>
@@ -25,10 +25,15 @@
     </div>
     {{end}}
   </div>
-  <div id="pull" {{if not (or .Pull.Running .Pull.Err)}}hidden{{end}} style="margin-top: 14px">
-    <div class="small">Downloading <b id="pull-model">{{.Pull.Model}}</b>: <span id="pull-status">{{.Pull.Status}}</span> <span id="pull-gb" class="muted"></span></div>
-    <progress id="pull-bar" max="100" value="0"></progress>
+  <div id="pull" {{if not (or .Pull.Running .Pull.Paused .Pull.Err)}}hidden{{end}} style="margin-top: 14px">
+    <div class="small"><span id="pull-verb">{{if .Pull.Paused}}Paused{{else}}Downloading{{end}}</span> <b id="pull-model">{{.Pull.Model}}</b>: <span id="pull-status">{{.Pull.Status}}</span> <span id="pull-gb" class="muted"></span></div>
+    <progress id="pull-bar" max="100" value="{{if .Pull.Total}}{{pctOf .Pull.Completed .Pull.Total}}{{else}}0{{end}}"></progress>
     <div id="pull-err" class="bad small">{{.Pull.Err}}</div>
+    <form method="post" action="/ui/settings/pull" class="actions" style="margin-top: 8px">
+      <button class="btn sm secondary" name="action" value="pause" id="pull-pause" {{if not .Pull.Running}}hidden{{end}}>Pause</button>
+      <button class="btn sm" name="action" value="resume" id="pull-resume" {{if not .Pull.Paused}}hidden{{end}}>Resume</button>
+      <button class="btn sm danger" name="action" value="cancel" id="pull-cancel" onclick="return confirm('Cancel the download?')">Cancel</button>
+    </form>
   </div>
   <p class="muted small">The model guesses categories of new merchants and writes tips. The program does all the math, not the model.</p>
 {{end}}
@@ -102,15 +107,20 @@
 (() => {
   const box = document.getElementById('pull');
   if (!box || box.hidden) return;
+  const $ = id => document.getElementById(id);
   const tick = async () => {
-    const s = await (await fetch('/ui/settings/pull')).json();
-    document.getElementById('pull-status').textContent = s.status;
-    document.getElementById('pull-err').textContent = s.error || '';
+    const s = await (await fetch('/ui/settings/pull', { cache: 'no-store' })).json();
+    $('pull-status').textContent = s.status;
+    $('pull-err').textContent = s.error || '';
+    $('pull-verb').textContent = s.paused ? 'Paused' : 'Downloading';
+    $('pull-pause').hidden = !s.running;
+    $('pull-resume').hidden = !s.paused;
     if (s.total > 0) {
-      document.getElementById('pull-bar').value = Math.round(s.completed * 100 / s.total);
-      document.getElementById('pull-gb').textContent = (s.completed / 1e9).toFixed(1) + ' of ' + (s.total / 1e9).toFixed(1) + ' GB';
+      $('pull-bar').value = Math.round(s.completed * 100 / s.total);
+      $('pull-gb').textContent = (s.completed / 1e9).toFixed(1) + ' of ' + (s.total / 1e9).toFixed(1) + ' GB';
     }
-    if (s.running) setTimeout(tick, 1500); else if (!s.error) location.reload();
+    if (s.running) setTimeout(tick, 1500);
+    else if (!s.error && !s.paused && s.model) location.reload();
   };
   tick();
 })();

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -38,13 +39,15 @@ var modelChoices = []ModelChoice{
 	{"qwen2.5:1.5b", "1 GB", "for a weak computer; rough guesses"},
 }
 
-// pullState is a background model download; one at a time.
+// pullState is a background model download; one at a time. A paused one keeps its model and
+// progress: Ollama keeps the parts it has, so pulling again carries on from there.
 type pullState struct {
 	Model     string `json:"model"`
 	Status    string `json:"status"`
 	Completed int64  `json:"completed"`
 	Total     int64  `json:"total"`
 	Running   bool   `json:"running"`
+	Paused    bool   `json:"paused"`
 	Err       string `json:"error"`
 }
 
@@ -104,17 +107,31 @@ func (s *Server) chooseModel(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/settings?msg="+urlq("Model "+model+" selected."), http.StatusSeeOther)
 		return
 	}
+	s.startPull(model) // when a download already runs, the page shows it
+	http.Redirect(w, r, "/ui/settings#model", http.StatusSeeOther)
+}
+
+// startPull downloads a model in the background; false when a download already runs.
+func (s *Server) startPull(model string) bool {
+	cfg := s.settings
 	s.pullMu.Lock()
 	if s.pull.Running {
 		s.pullMu.Unlock()
-		http.Redirect(w, r, "/ui/settings", http.StatusSeeOther)
-		return
+		return false
 	}
-	s.pull.Model, s.pull.Status, s.pull.Completed, s.pull.Total, s.pull.Running, s.pull.Err = model, "starting", 0, 0, true, ""
+	// carrying on with a paused download keeps its progress on screen
+	resume := s.pull.Paused && s.pull.Model == model
+	s.pull.Model, s.pull.Running, s.pull.Paused, s.pull.Err = model, true, false, ""
+	if !resume {
+		s.pull.Status, s.pull.Completed, s.pull.Total = "starting", 0, 0
+	} else {
+		s.pull.Status = "resuming"
+	}
+	// The download outlives the request: it gets its own context, which pause and cancel end.
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	s.pullCancel = cancel
 	s.pullMu.Unlock()
 	go func() {
-		// The download outlives the request: it gets its own context.
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
 		defer cancel()
 		err := cfg.Ollama.Pull(ctx, model, func(status string, done, total int64) {
 			s.pullMu.Lock()
@@ -125,20 +142,65 @@ func (s *Server) chooseModel(w http.ResponseWriter, r *http.Request) {
 			s.pullMu.Unlock()
 		})
 		s.pullMu.Lock()
+		stopped := ctx.Err() != nil && errors.Is(ctx.Err(), context.Canceled)
 		s.pull.Running = false
-		if err != nil {
+		s.pullCancel = nil
+		switch {
+		case stopped:
+			// paused or cancelled from the page: not an error
+		case err != nil:
 			s.pull.Err = err.Error()
-		} else {
+		default:
 			s.pull.Status = "done"
 		}
 		s.pullMu.Unlock()
-		if err == nil {
-			s.useModel(ctx, model)
-		} else {
+		switch {
+		case err == nil && !stopped:
+			s.useModel(context.Background(), model)
+		case err != nil && !stopped:
 			s.log.Error("web: model pull", "model", model, "err", err)
 		}
 	}()
-	http.Redirect(w, r, "/ui/settings", http.StatusSeeOther)
+	return true
+}
+
+// pullControl pauses, resumes or cancels the model download.
+func (s *Server) pullControl(w http.ResponseWriter, r *http.Request) {
+	msg := ""
+	switch r.PostFormValue("action") {
+	case "pause":
+		s.pullMu.Lock()
+		if s.pull.Running && s.pullCancel != nil {
+			s.pull.Paused, s.pull.Status = true, "paused"
+			s.pullCancel()
+		}
+		s.pullMu.Unlock()
+		msg = "Download paused. What is downloaded stays; Resume carries on from there."
+	case "resume":
+		s.pullMu.Lock()
+		model, paused := s.pull.Model, s.pull.Paused
+		s.pullMu.Unlock()
+		if paused && model != "" {
+			s.startPull(model)
+		}
+	case "cancel":
+		s.pullMu.Lock()
+		if s.pullCancel != nil {
+			s.pullCancel()
+		}
+		model := s.pull.Model
+		s.pull = pullState{}
+		s.pullMu.Unlock()
+		msg = "Download of " + model + " cancelled. Ollama clears the unfinished parts by itself."
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	back := "/ui/settings#model"
+	if msg != "" {
+		back = "/ui/settings?msg=" + urlq(msg) + "#model"
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 func (s *Server) useModel(ctx context.Context, model string) {

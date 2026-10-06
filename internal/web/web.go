@@ -55,6 +55,7 @@ type Server struct {
 	ai          llm.Provider       // understands requests on the operations page; nil — rules only
 	pull        pullState
 	pullMu      sync.Mutex
+	pullCancel  context.CancelFunc // ends the running download: pause or cancel
 	gate        *Gate // signs browsers in; set when the Gate builds this Server
 	handlerOnce sync.Once
 	handler     http.Handler
@@ -127,6 +128,12 @@ func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, l
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"pctOf": func(a, b int64) int64 {
+			if b <= 0 {
+				return 0
+			}
+			return a * 100 / b
+		},
 		"notes":    notesHTML,
 		"isMonth":  analytics.IsMonth,
 		"swap":     swap,
@@ -198,6 +205,7 @@ func (s *Server) Handler() http.Handler {
 			ui.HandleFunc("GET /ui/settings", s.settingsPage)
 			ui.HandleFunc("POST /ui/settings/model", s.chooseModel)
 			ui.HandleFunc("GET /ui/settings/pull", s.pullStatus)
+			ui.HandleFunc("POST /ui/settings/pull", s.pullControl)
 			ui.HandleFunc("POST /ui/settings/update/check", s.checkUpdate)
 			ui.HandleFunc("POST /ui/settings/update/apply", s.applyUpdate)
 			ui.HandleFunc("GET /ui/settings/update/progress", s.updateProgress)
@@ -703,6 +711,7 @@ type transfersData struct {
 	Sorts          []struct{ Key, Title string }
 	Ask            string
 	AI             bool
+	AIWhy          string
 	State          string
 	Picker         picker
 }
@@ -774,7 +783,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 		analytics.PeopleNew, analytics.PeopleOld, analytics.PeopleBalance, analytics.PeopleName} {
 		d.Sorts = append(d.Sorts, struct{ Key, Title string }{k, peopleSorts[k]})
 	}
-	d.Ask, d.AI = q.Get("ask"), s.aiReady()
+	d.Ask, d.AI, d.AIWhy = q.Get("ask"), s.aiReady(), s.aiWhy(ctx)
 	sq := cloneValues(q)
 	for _, k := range []string{"msg", "limit", "ask"} {
 		sq.Del(k)

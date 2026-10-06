@@ -235,7 +235,8 @@ type operationsData struct {
 	Stats        analytics.Stats
 	Flat         bool // a plain list: sorted by amount or oldest first, not by day
 	Ask          string
-	AI           bool // a model understands requests; otherwise rules only
+	AI           bool // a model understands requests; otherwise the box is off
+	AIWhy        string
 	State        string
 	NoSavings    bool
 	Categories   []store.Category
@@ -386,7 +387,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	d.Picker = newPicker("/ui/operations", q, d.Current, custom, rows)
 	d.Type, d.Category, d.Merchant, d.Query = f.Type, f.Category, f.Merchant, f.Query
 	d.Min, d.Max, d.Dir, d.Repeat, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, f.Repeat, q.Get("sort"), q.Get("group")
-	d.Groupings, d.Ask, d.AI = analytics.Groupings, q.Get("ask"), s.aiReady()
+	d.Groupings, d.Ask, d.AI, d.AIWhy = analytics.Groupings, q.Get("ask"), s.aiReady(), s.aiWhy(ctx)
 	sq := cloneValues(q)
 	for _, k := range []string{"msg", "limit", "ask"} {
 		sq.Del(k)
@@ -632,6 +633,7 @@ type categoriesData struct {
 	TrendUnit  string
 	Ask        string
 	AI         bool
+	AIWhy      string
 	State      string
 	Picker     picker
 }
@@ -645,7 +647,7 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
 	d := &categoriesData{Flash: q.Get("msg"), Query: strings.TrimSpace(q.Get("q")), Savings: q.Get("savings"),
-		Unused: q.Get("unused") == "1", NoSavings: q.Get("nosave") == "1", Sort: q.Get("sort"), Ask: q.Get("ask"), AI: s.aiReady(), Sorts: categorySorts}
+		Unused: q.Get("unused") == "1", NoSavings: q.Get("nosave") == "1", Sort: q.Get("sort"), Ask: q.Get("ask"), AI: s.aiReady(), AIWhy: s.aiWhy(ctx), Sorts: categorySorts}
 	cats, err := s.st.AllCategories(ctx)
 	if err != nil {
 		s.fail(w, err)
