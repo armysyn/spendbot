@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	_ "time/tzdata" // time zone database inside the binary: Windows does not have one
@@ -34,6 +35,7 @@ import (
 	"spendbot/internal/llm"
 	"spendbot/internal/scheduler"
 	"spendbot/internal/store"
+	"spendbot/internal/update"
 	"spendbot/internal/web"
 )
 
@@ -86,11 +88,55 @@ func main() {
 		fmt.Println("Its browsers are signed out. Sign in with it and change it on the Security page.")
 		return
 	}
+	// "spendbot update" installs the latest release; "spendbot update --check" only looks.
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		os.Exit(runUpdate(cfg, len(os.Args) > 2 && os.Args[2] == "--check", log))
+	}
 	if err := run(cfg, log); err != nil {
 		log.Error("fatal", "err", err)
 		waitOnWindows()
 		os.Exit(1)
 	}
+	if restartRequested.Load() {
+		log.Info("restarting into the updated program")
+		if err := reexec(); err != nil {
+			log.Error("restart", "err", err)
+			os.Exit(1)
+		}
+	}
+}
+
+// restartRequested is set when an update from the page is installed: run returns and main
+// starts the new program.
+var restartRequested atomic.Bool
+
+func runUpdate(cfg config.Config, checkOnly bool, log *slog.Logger) int {
+	ctx := context.Background()
+	u := update.New(version, false, log)
+	if err := u.Check(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "update:", err)
+		return 1
+	}
+	st := u.Status()
+	fmt.Printf("This spendbot: %s. Latest release: %s.\n", st.Current, st.Latest.Tag)
+	switch {
+	case !st.Newer:
+		fmt.Println("Nothing to update.")
+		return 0
+	case checkOnly:
+		fmt.Println("\n" + st.Latest.Body)
+		return 0
+	case st.Source:
+		fmt.Println("This spendbot is built from source: update it with git pull, then build it again.")
+		return 0
+	}
+	tag, err := u.Apply(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "update:", err)
+		return 1
+	}
+	fmt.Printf("Installed %s. Start spendbot again (start.bat, start.command or the service) to use it.\n", tag)
+	return 0
 }
 
 // openAccounts opens the accounts registry next to the database. On the first start the
@@ -272,7 +318,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if ch != nil {
 		w.WithAnalytics(ch)
 	}
+	updater := update.New(version, !cfg.UpdateCheck, log)
+	goRun(func() { updater.Run(ctx) })
 	settings := web.Settings{ConfigFile: cfg.File, DataDir: filepath.Dir(cfg.DBPath),
+		Updater: updater, Restart: func() { restartRequested.Store(true); stop() },
 		IngestURL: cfg.PublicURL + "/api/v1/tx", IngestToken: cfg.IngestToken,
 		Telegram: cfg.TelegramToken != "", ClickHouse: ch != nil}
 	if local != nil {
@@ -317,6 +366,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		run(func() { scheduler.New(acfg, ast, nil, log).Run(actx) })
 		as := settings
 		as.DataDir, as.Telegram, as.ClickHouse, as.IngestURL, as.IngestToken = filepath.Dir(a.DBPath), false, false, "", ""
+		as.Restart = nil // updating the program is for the first account
 		srv := web.New(ast, aan, cfg.AutoMinHits, cfg.BatchMaxAge, cfg.Location, log).WithAI(ai).WithSettings(as)
 		return srv.OnClose(func() { cancel(); awg.Wait(); ast.Close() }), nil
 	}
@@ -336,6 +386,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 		WriteTimeout:      60 * time.Second, // importing a large statement
 	}
 	ln, err := net.Listen("tcp", cfg.Addr)
+	// right after an update on Windows the old program may still hold the port for a moment
+	for i := 0; err != nil && os.Getenv("SPENDBOT_RESTARTED") == "1" && i < 40; i++ {
+		time.Sleep(500 * time.Millisecond)
+		ln, err = net.Listen("tcp", cfg.Addr)
+	}
 	if err != nil {
 		return fmt.Errorf("port %s is busy or unavailable (is the program already running?): %w", cfg.Addr, err)
 	}

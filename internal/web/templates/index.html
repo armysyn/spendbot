@@ -8,6 +8,7 @@
   {{if $s}}<div class="actions"><a class="btn secondary sm" href="{{link "/ui/analytics" "period" $s.Month.Key}}">{{template "icon" "chart"}}Month analytics</a></div>{{end}}
 </div>
 {{template "flash" .Flash}}
+{{with .Update}}<div class="flash" role="status">{{template "icon" "download"}}<div><b>spendbot {{.Latest.Tag}} is out.</b> {{if .Source}}This copy is built from source — update it with git pull.{{end}} <a href="/ui/settings#updates">See what's new{{if .CanApply}} and update{{end}}</a></div></div>{{end}}
 {{with .ModelHint}}<div class="flash warn">{{template "icon" "help"}}<div>{{.}} <a href="/ui/settings">Open settings</a></div></div>{{end}}
 
 {{if .Open}}

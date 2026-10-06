@@ -53,7 +53,52 @@
 </div>
 </div>
 
+{{with .Update}}
+<div class="card" id="updates" style="margin-top: 14px">
+  <div class="card-head"><h3>Updates</h3>
+    {{if .Newer}}<span class="pill up">{{.Latest.Tag}} is out</span>{{else if .Latest}}<span class="pill ok">up to date</span>{{end}}</div>
+  <dl class="kv">
+    <dt>This spendbot</dt><dd><code>{{.Current}}</code>{{if .Source}} <span class="muted small">— built from source</span>{{end}}</dd>
+    <dt>Latest release</dt><dd>{{with .Latest}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Tag}}</a> <span class="muted small">· {{date .Published}}</span>{{else}}<span class="muted">not checked yet</span>{{end}}</dd>
+    <dt>Checked</dt><dd>{{if .CheckedAt.IsZero}}<span class="muted">not yet</span>{{else}}{{datetime .CheckedAt}}{{end}}{{if .Off}} <span class="muted small">· automatic checks are off (UPDATE_CHECK=off)</span>{{else}} <span class="muted small">· every 6 hours</span>{{end}}{{with .Err}} <span class="bad small">· {{.}}</span>{{end}}</dd>
+  </dl>
+  {{if and .Newer .Latest}}
+  <div class="notes" style="margin-top: 12px; border-top: 1px solid var(--line); padding-top: 4px">
+    <h4 style="margin-bottom: 4px">What's new in {{.Latest.Tag}}</h4>
+    {{notes .Latest.Body}}
+  </div>
+  {{end}}
+  <div class="actions" style="margin-top: 12px">
+    {{if $.CanUpdate}}
+    <form method="post" action="/ui/settings/update/check"><button class="btn sm secondary">Check now</button></form>
+    {{if .Newer}}{{if .CanApply}}
+    <form method="post" action="/ui/settings/update/apply" id="update-form"><button class="btn sm" {{if $.Updating.Running}}disabled{{end}} onclick="return confirm('Install {{.Latest.Tag}} and restart spendbot? It takes a minute; your data stays as it is.')">{{template "icon" "download"}}Update to {{.Latest.Tag}}</button></form>
+    {{else if .Source}}<span class="muted small">This copy is built from source: update it with <code>git pull</code> and build it again.</span>
+    {{else}}<span class="muted small">This copy runs in Docker: pull the new image.</span>{{end}}{{end}}
+    {{else}}<span class="muted small">Updating the program is done from the first account.</span>{{end}}
+  </div>
+  <div id="update-progress" {{if not (or $.Updating.Running $.Updating.Done $.Updating.Err)}}hidden{{end}} class="flash" style="margin: 12px 0 0">{{template "icon" "download"}}<div id="update-text">{{if $.Updating.Running}}Downloading and checking the new version…{{else if $.Updating.Done}}Installed {{$.Updating.Done}}. Restarting…{{else}}{{$.Updating.Err}}{{end}}</div></div>
+  <p class="muted tiny" style="margin-bottom: 0">The download is checked against the release's SHA256SUMS.txt before it replaces the program; the previous one stays next to it as <code>spendbot.old</code>. Your data and settings are not touched; the database upgrades itself on start.</p>
+</div>
+{{end}}
+
 <script>
+(() => {
+  const box = document.getElementById('update-progress');
+  if (!box || box.hidden) return;
+  const text = document.getElementById('update-text');
+  const waitForNew = () => fetch('/healthz', { cache: 'no-store' }).then(r => r.ok ? location.reload() : setTimeout(waitForNew, 1500)).catch(() => setTimeout(waitForNew, 1500));
+  const tick = async () => {
+    try {
+      const s = await (await fetch('/ui/settings/update/progress', { cache: 'no-store' })).json();
+      if (s.running) { text.textContent = 'Downloading and checking the new version…'; setTimeout(tick, 1500); return; }
+      if (s.done) { text.textContent = 'Installed ' + s.done + '. Restarting…'; setTimeout(waitForNew, 3000); return; }
+      if (s.error) { box.classList.add('bad'); text.textContent = s.error; }
+    } catch (e) { setTimeout(waitForNew, 2000); }
+  };
+  tick();
+})();
+
 (() => {
   const box = document.getElementById('pull');
   if (!box || box.hidden) return;

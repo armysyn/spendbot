@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"spendbot/internal/llm"
+	"spendbot/internal/update"
 )
 
 // Settings is what the settings page shows and changes.
@@ -21,6 +22,8 @@ type Settings struct {
 	ClickHouse  bool
 	Model       *llm.Client // nil — the local model is off (ANALYSIS_LLM=off)
 	Ollama      *llm.Ollama
+	Updater     *update.Updater // new releases; nil — not shown
+	Restart     func()          // starts the updated program; nil — this account may not update
 }
 
 // ModelChoice is a recommended model: the smaller, the weaker the computer it runs on,
@@ -59,6 +62,9 @@ func (s *Server) WithSettings(cfg Settings) *Server {
 
 type settingsData struct {
 	Page
+	Update    *update.Status
+	CanUpdate bool
+	Updating  progress
 	Settings
 	OllamaUp  bool
 	Installed []string
@@ -69,7 +75,8 @@ type settingsData struct {
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
-	d := settingsData{Settings: *s.settings, Choices: modelChoices, Pull: s.pullSnapshot(), Flash: r.URL.Query().Get("msg")}
+	d := settingsData{Settings: *s.settings, Choices: modelChoices, Pull: s.pullSnapshot(), Flash: r.URL.Query().Get("msg"),
+		Update: s.updateStatus(), CanUpdate: s.canUpdate(), Updating: s.upd.snapshot()}
 	if d.Model != nil && d.Ollama != nil {
 		d.Current = d.Model.Model()
 		if d.OllamaUp = d.Ollama.Running(r.Context()); d.OllamaUp {
