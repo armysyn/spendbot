@@ -114,8 +114,11 @@ func TestPullPauseResumeCancel(t *testing.T) {
 
 	b.req("POST", "/ui/settings/pull", url.Values{"action": {"resume"}})
 	waitFor("resumed", func(p pullState) bool { return p.Running && !p.Paused })
-	if pulls.Load() != 2 {
-		t.Errorf("resume pulls again: %d", pulls.Load())
+	// resuming starts a new pull; it reaches Ollama a moment later
+	for deadline := time.Now().Add(5 * time.Second); pulls.Load() < 2; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("resume pulls again: %d", pulls.Load())
+		}
 	}
 
 	b.req("POST", "/ui/settings/pull", url.Values{"action": {"cancel"}})
