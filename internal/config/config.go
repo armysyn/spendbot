@@ -19,6 +19,7 @@ type Config struct {
 
 	OpenBrowser bool   // open the page in a browser after start (handy on Windows)
 	LogFormat   string // json | text
+	UpdateCheck bool   // ask GitHub for new releases every 6 hours (UPDATE_CHECK=off turns it off)
 	File        string // settings file that was read (spendbot.env); empty — environment only
 
 	IngestToken string // empty — generated once and stored in the database
@@ -137,6 +138,7 @@ func load(getenv func(string) string, exeDir string) (Config, error) {
 		DBPath:         get("DB_PATH", filepath.Join(dataDir, "spend.db")),
 		OpenBrowser:    get("OPEN_BROWSER", "0") == "1",
 		LogFormat:      get("LOG_FORMAT", "json"),
+		UpdateCheck:    get("UPDATE_CHECK", "on") != "off",
 		Addr:           get("LISTEN_ADDR", ":8080"),
 		IngestToken:    get("INGEST_TOKEN", ""),
 		TelegramToken:  get("TELEGRAM_TOKEN", ""),

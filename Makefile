@@ -1,7 +1,7 @@
 .PHONY: build test lint run docker dist mac-install mac-uninstall mac-restart mac-logs
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/spendbot ./cmd/spendbot
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o bin/spendbot ./cmd/spendbot
 
 test:
 	go test -race ./...

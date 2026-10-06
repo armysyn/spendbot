@@ -29,6 +29,7 @@ import (
 	"spendbot/internal/money"
 	"spendbot/internal/statement"
 	"spendbot/internal/store"
+	"spendbot/internal/update"
 )
 
 //go:embed templates/*.html
@@ -58,6 +59,7 @@ type Server struct {
 	handlerOnce sync.Once
 	handler     http.Handler
 	closers     []func()
+	upd         updateState
 }
 
 // WithAnalytics makes the analytics page read from ClickHouse.
@@ -125,6 +127,7 @@ func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, l
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"notes":    notesHTML,
 		"isMonth":  analytics.IsMonth,
 		"swap":     swap,
 		"swapAt":   swapAt,
@@ -195,6 +198,9 @@ func (s *Server) Handler() http.Handler {
 			ui.HandleFunc("GET /ui/settings", s.settingsPage)
 			ui.HandleFunc("POST /ui/settings/model", s.chooseModel)
 			ui.HandleFunc("GET /ui/settings/pull", s.pullStatus)
+			ui.HandleFunc("POST /ui/settings/update/check", s.checkUpdate)
+			ui.HandleFunc("POST /ui/settings/update/apply", s.applyUpdate)
+			ui.HandleFunc("GET /ui/settings/update/progress", s.updateProgress)
 		}
 		ui.HandleFunc("POST /ui/transfers/category", s.transferCategory)
 		ui.HandleFunc("GET /ui/batch/{id}", s.batch)
@@ -221,8 +227,9 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 
 type indexData struct {
 	Page
-	Summary   *homeSummary // nil — no data yet
-	ModelHint string       // the model is not ready — hint to open the settings
+	Update    *update.Status // a newer release, shown on the first account's home page
+	Summary   *homeSummary   // nil — no data yet
+	ModelHint string         // the model is not ready — hint to open the settings
 	Open      []store.Batch
 	Answered  []store.Batch
 	Insights  []store.Insight
@@ -255,6 +262,9 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	d.Waiting, d.BatchAt = n, oldest.Add(s.batchMaxAge)
 	d.Flash = r.URL.Query().Get("msg")
 	d.ModelHint = s.modelHint(ctx)
+	if st := s.updateStatus(); st != nil && st.Newer && s.canUpdate() {
+		d.Update = st
+	}
 	if d.Summary, err = s.homeSummary(ctx); err != nil {
 		s.fail(w, err)
 		return
