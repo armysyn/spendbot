@@ -2,8 +2,8 @@ package web
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"

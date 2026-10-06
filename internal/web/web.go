@@ -56,7 +56,7 @@ type Server struct {
 	pull        pullState
 	pullMu      sync.Mutex
 	pullCancel  context.CancelFunc // ends the running download: pause or cancel
-	gate        *Gate // signs browsers in; set when the Gate builds this Server
+	gate        *Gate              // signs browsers in; set when the Gate builds this Server
 	handlerOnce sync.Once
 	handler     http.Handler
 	closers     []func()
@@ -134,15 +134,15 @@ func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, l
 			}
 			return a * 100 / b
 		},
-		"notes":    notesHTML,
-		"isMonth":  analytics.IsMonth,
-		"swap":     swap,
-		"swapAt":   swapAt,
-		"tenge":    tenge,
-		"mod":      func(a, b int) int { return a % max(b, 1) },
-		"every":    func(n int) int { return max((n+11)/12, 1) },
-		"subi":     func(a, b int) int { return a - b },
-		"add":      func(a, b int) int { return a + b },
+		"notes":   notesHTML,
+		"isMonth": analytics.IsMonth,
+		"swap":    swap,
+		"swapAt":  swapAt,
+		"tenge":   tenge,
+		"mod":     func(a, b int) int { return a % max(b, 1) },
+		"every":   func(n int) int { return max((n+11)/12, 1) },
+		"subi":    func(a, b int) int { return a - b },
+		"add":     func(a, b int) int { return a + b },
 		"title": func(s string) string {
 			if s == "" {
 				return s
