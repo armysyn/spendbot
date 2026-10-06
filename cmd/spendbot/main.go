@@ -68,11 +68,35 @@ func main() {
 		waitOnWindows()
 		os.Exit(1)
 	}
+	// Forgot the page password: run "spendbot reset-password" on the computer itself.
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		if err := resetPassword(cfg); err != nil {
+			fmt.Fprintln(os.Stderr, "reset-password:", err)
+			os.Exit(1)
+		}
+		fmt.Println("The page password is removed and every browser is signed out.")
+		if cfg.WebPassword != "" {
+			fmt.Println("WEB_PASSWORD in the settings file still applies; remove it there to open the page.")
+		} else {
+			fmt.Println("Open the page and set a new password on the Security page.")
+		}
+		return
+	}
 	if err := run(cfg, log); err != nil {
 		log.Error("fatal", "err", err)
 		waitOnWindows()
 		os.Exit(1)
 	}
+}
+
+func resetPassword(cfg config.Config) error {
+	ctx := context.Background()
+	st, err := store.Open(ctx, cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	return st.ResetPassword(ctx)
 }
 
 // waitOnWindows keeps the console window open on an error: otherwise double-clicking the
@@ -203,7 +227,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		ai = provider
 	}
 	w.WithAI(ai).WithSettings(settings).Register(mux)
-	if cfg.WebPassword == "" && !isLoopback(cfg.Addr) {
+	if !w.HasPassword(ctx) && !isLoopback(cfg.Addr) {
 		log.Warn("web ui WITHOUT password is open to the network", "addr", cfg.Addr)
 	}
 

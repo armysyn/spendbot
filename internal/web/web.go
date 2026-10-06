@@ -1,10 +1,9 @@
 // Package web is the page on the home network: merchant question batches, insights,
-// analytics and statement uploads. HTTP Basic password if set, cross-origin protection from stdlib.
+// analytics and statement uploads. A password with a sign-in page if set, cross-origin protection from stdlib.
 package web
 
 import (
 	"context"
-	"crypto/subtle"
 	"embed"
 	"errors"
 	"fmt"
@@ -55,6 +54,10 @@ type Server struct {
 	ai          llm.Provider       // understands requests on the operations page; nil — rules only
 	pull        pullState
 	pullMu      sync.Mutex
+	guard       guard
+	pwMu        sync.Mutex
+	pwHash      string // the page password hash, cached
+	pwLoaded    bool
 }
 
 // WithAnalytics makes the analytics page read from ClickHouse.
@@ -154,7 +157,8 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 	return s
 }
 
-// Register mounts the pages on mux. Everything under /ui needs the password if one is set.
+// Register mounts the pages on mux. Everything under /ui but the sign-in page needs a signed-in
+// browser when a password is set.
 func (s *Server) Register(mux *http.ServeMux) {
 	protect := http.NewCrossOriginProtection()
 	protect.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +168,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	}))
 	ui := http.NewServeMux()
 	ui.HandleFunc("GET /ui", s.index)
+	ui.HandleFunc("GET /ui/login", s.login)
+	ui.HandleFunc("POST /ui/login", s.login)
+	ui.HandleFunc("POST /ui/logout", s.logout)
+	ui.HandleFunc("GET /ui/security", s.security)
+	ui.HandleFunc("POST /ui/security", s.securityAction)
 	ui.HandleFunc("GET /ui/analytics", s.analytics)
 	ui.HandleFunc("GET /ui/operations", s.operations)
 	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
@@ -196,22 +205,6 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.Handle("/ui/", h)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui", http.StatusFound)
-	})
-}
-
-// auth requires the password when set; without one the page is open to the network.
-func (s *Server) auth(next http.Handler) http.Handler {
-	if len(s.password) == 0 {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, pass, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(pass), s.password) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="spendbot", charset="UTF-8"`)
-			http.Error(w, "password required (WEB_PASSWORD)", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
 	})
 }
 

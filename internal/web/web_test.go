@@ -54,9 +54,15 @@ func do(h http.Handler, method, path string, body io.Reader, ctype string, auth 
 
 func TestAuth(t *testing.T) {
 	h, _, _ := setup(t)
-	if w := do(h, "GET", "/ui", nil, "", false); w.Code != http.StatusUnauthorized {
-		t.Fatalf("no password: %d", w.Code)
+	// a page asks to sign in, a form post is refused
+	if w := do(h, "GET", "/ui/income?period=all", nil, "", false); w.Code != http.StatusSeeOther ||
+		w.Header().Get("Location") != "/ui/login?next=%2Fui%2Fincome%3Fperiod%3Dall" {
+		t.Fatalf("no password: %d %s", w.Code, w.Header().Get("Location"))
 	}
+	if w := do(h, "POST", "/ui/insight/1/dismiss", nil, "", false); w.Code != http.StatusUnauthorized {
+		t.Fatalf("post without password: %d", w.Code)
+	}
+	// scripts may still send the password with Basic auth
 	if w := do(h, "GET", "/ui", nil, "", true); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Upload a statement") {
 		t.Fatalf("index: %d", w.Code)
 	}

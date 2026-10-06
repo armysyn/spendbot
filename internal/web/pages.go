@@ -26,6 +26,10 @@ type Page struct {
 	Open   int    // merchants waiting for an answer in open batches
 	Issues int    // open issues
 	Path   string // this page with its query, for "report a problem"
+	// NoPassword warns that anyone on the network can open the page; SignedIn shows "sign out".
+	NoPassword bool
+	SignedIn   bool
+	Bare       bool // no menu: the sign-in page
 }
 
 func (p *Page) page() *Page { return p }
@@ -49,6 +53,8 @@ func (s *Server) show(w http.ResponseWriter, r *http.Request, name, title, nav s
 	p := data.page()
 	p.Title, p.Nav, p.Open, p.Path = title, nav, s.openQuestions(r.Context()), r.URL.RequestURI()
 	p.Issues, _, _ = s.st.IssueCounts(r.Context())
+	p.NoPassword = !s.hasPassword(r.Context())
+	_, p.SignedIn = s.session(r)
 	s.render(w, name, data)
 }
 
