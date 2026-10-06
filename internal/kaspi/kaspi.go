@@ -74,6 +74,11 @@ const (
 	ColDetails = "Детали"   // details
 )
 
+// HolderPattern finds the account holder on the statement's cover: "АО «Kaspi Bank»
+// подтверждает, что <full name>, ИИН …" ("confirms that <full name>, IIN …"). Only the name
+// is taken; the IIN (national ID) is never kept.
+const HolderPattern = `подтверждает,?\s+что\s+(.+?),?\s+ИИН`
+
 // PeriodPattern matches the statement period line, "за период с 05.10.25 по 05.10.26"
 // ("for the period from … to …").
 const PeriodPattern = `за период с (\d{2}\.\d{2}\.\d{2}) по (\d{2}\.\d{2}\.\d{2})`

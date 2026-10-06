@@ -30,6 +30,7 @@ func header(y float64) []segment {
 // not end up in the details of the last operation. The table header is on page one only.
 func TestParseKaspiLines(t *testing.T) {
 	lines := [][]segment{
+		line(700, 40, "АО «Kaspi Bank» подтверждает, что Иванов  Иван Иванович ИИН 000000000000"),
 		line(654, 40, "по Kaspi Gold за период с 01.01.26 по 31.12.26"),
 		line(600, 300, "*1234"),
 		line(484, 43, "Покупки", 200, "- 7 182,70 ₸"),
@@ -52,6 +53,9 @@ func TestParseKaspiLines(t *testing.T) {
 	st, err := parseKaspiLines(lines, almaty)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if st.Holder != "Иванов Иван Иванович" {
+		t.Errorf("holder: %q", st.Holder)
 	}
 	if st.Account != "*1234" || st.From.Format("2006-01-02") != "2026-01-01" || st.To.Format("2006-01-02") != "2026-12-31" {
 		t.Fatalf("header: %+v", st)

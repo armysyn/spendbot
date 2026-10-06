@@ -1,5 +1,5 @@
 {{template "head" .Page}}
-<div class="page-head"><div><h1>Security</h1><div class="sub">Who can open spendbot</div></div></div>
+<div class="page-head"><div><h1>Security</h1><div class="sub">Who can open spendbot{{if gt (len .Accounts) 1}} · signed in to <b>{{.Name}}</b>{{end}}</div></div></div>
 {{template "flash" .Flash}}
 
 <div class="grid g2">
@@ -41,7 +41,7 @@
     <div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
       <div class="op-main"><span class="op-title" style="font-weight: 500">{{if .Agent}}{{.Agent}}{{else}}a browser{{end}}</span>
         <div class="op-meta"><span>signed in {{datetime .CreatedAt}} · last used {{datetime .SeenAt}}</span></div></div>
-      {{if eq .ID $.CurrentID}}<span class="pill ok">this one</span>{{end}}
+      {{if eq .ID $.Current}}<span class="pill ok">this one</span>{{end}}
     </div>
     {{end}}
   </div>
@@ -50,5 +50,45 @@
   {{else}}<div class="empty small">{{if .Has}}No browser is signed in.{{else}}Nobody signs in while there is no password.{{end}}</div>{{end}}
   <p class="muted tiny">The iPhone automation for Apple Wallet uses its own token (Settings), not this password.</p>
 </div>
+</div>
+<div class="card" style="margin-top: 14px" id="accounts">
+  <div class="card-head"><h3>Accounts</h3><span class="muted tiny">each one has its own operations, categories, income and issues</span></div>
+  <div class="ops" style="box-shadow: none; margin-bottom: 14px">
+    {{range .Accounts}}
+    <div class="op" style="grid-template-columns: 36px minmax(0, 1fr) auto">
+      <span class="ava" style="--h: {{hue .Name}}" aria-hidden="true">{{initial .Name}}</span>
+      <div class="op-main"><span class="op-title">{{.Name}}{{if .Current}} <span class="pill ok">you are here</span>{{end}}</span>
+        <div class="op-meta">{{if .Holder}}<span>statements of {{.Holder}}</span>{{else}}<span>no statement yet</span>{{end}}<span>· since {{date .CreatedAt}}</span>{{if .Primary}}<span class="tag">first: Telegram, Apple Wallet, ClickHouse</span>{{end}}</div></div>
+      <span class="muted tiny">{{if not .Current}}sign in with its password{{end}}</span>
+    </div>
+    {{end}}
+  </div>
+  <div class="grid g2">
+    <form method="post" action="/ui/security" style="display: grid; gap: 10px">
+      <input type="hidden" name="action" value="rename">
+      <div class="field"><label for="an">This account's name</label><input id="an" type="text" name="name" value="{{.Name}}" maxlength="40" required></div>
+      <div><button class="btn sm secondary">Rename</button></div>
+    </form>
+    <form method="post" action="/ui/security" style="display: grid; gap: 10px">
+      <input type="hidden" name="action" value="create">
+      <div class="field"><label for="nn">New account — whose?</label><input id="nn" type="text" name="name" maxlength="40" placeholder="e.g. Anna" required {{if not .Has}}disabled{{end}}></div>
+      <div class="grid g2" style="gap: 10px">
+        <div class="field"><label for="npw">Its password</label><input id="npw" type="password" name="password" minlength="8" autocomplete="new-password" required {{if not .Has}}disabled{{end}}></div>
+        <div class="field"><label for="nrp">Repeat it</label><input id="nrp" type="password" name="repeat" minlength="8" autocomplete="new-password" required {{if not .Has}}disabled{{end}}></div>
+      </div>
+      <div class="muted tiny">{{if .Has}}Each account needs a different password: on the sign-in page the password tells whose account it is.{{else}}Set a password for this account first: with several accounts every one needs its own.{{end}}</div>
+      <div><button class="btn sm" {{if not .Has}}disabled{{end}}>{{template "icon" "plus"}}Create account</button></div>
+    </form>
+  </div>
+  {{if not .Primary}}
+  <details class="more" style="margin-top: 14px"><summary>Delete this account</summary>
+    <form method="post" action="/ui/security" style="display: grid; gap: 10px; margin-top: 10px; max-width: 360px">
+      <input type="hidden" name="action" value="delete">
+      <div class="field"><label for="dc">Current password</label><input id="dc" type="password" name="current" autocomplete="current-password" required></div>
+      <div class="muted tiny">Its database is moved aside next to the others, not erased; the browser signs out.</div>
+      <div><button class="btn sm danger" onclick="return confirm('Delete the account {{.Name}}? You are signed out; its data file is kept aside.')">Delete account</button></div>
+    </form>
+  </details>
+  {{end}}
 </div>
 {{template "foot" .}}

@@ -27,6 +27,14 @@ func TestHashVerify(t *testing.T) {
 	}
 }
 
+func TestRandomPassword(t *testing.T) {
+	a, err := RandomPassword()
+	b, _ := RandomPassword()
+	if err != nil || len(a) != 14 || a == b || Check(a) != nil || strings.ContainsAny(a, "il1o0") {
+		t.Errorf("%q %q %v", a, b, err)
+	}
+}
+
 func TestCheckAndTokens(t *testing.T) {
 	if Check("short") == nil || Check("пароль12") != nil || Check(strings.Repeat("a", 2000)) == nil {
 		t.Error("check")

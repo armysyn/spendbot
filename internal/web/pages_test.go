@@ -240,9 +240,9 @@ func TestAskKeepsFilters(t *testing.T) {
 	defer st.Close()
 	seedOps(t, st)
 	mux := http.NewServeMux()
-	srv := New(st, nil, "", 3, time.Minute, almaty, slogDiscard())
+	srv := New(st, nil, 3, time.Minute, almaty, slogDiscard())
 	// the model misreads the amount; the rules' exact reading wins, the rest comes from the model
-	srv.WithAI(fakeAI{`{"min_amount": 20, "max_amount": 50, "sort": "big", "category": "No Such"}`}).Register(mux)
+	gateFor(t, mux, srv.WithAI(fakeAI{`{"min_amount": 20, "max_amount": 50, "sort": "big", "category": "No Such"}`}), "")
 	form := url.Values{"prompt": {"между 20к и 50к, сначала крупные"}, "state": {"type=transfers&q=Adam+S."}}
 	w := do(mux, "POST", "/ui/operations/ask", strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", false)
 	loc, _ := url.Parse(w.Header().Get("Location"))

@@ -123,8 +123,8 @@ h2.section { font-size: 13px; font-weight: 600; text-transform: uppercase; lette
 .btn.big { padding: 12px 22px; font-size: 15px; }
 .btn.danger { background: transparent; color: var(--bad); border-color: var(--line-2); }
 .btn[disabled] { opacity: .5; cursor: default; }
-input[type=text], input[type=search], input[type=date], input[type=month], select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
-input[type=text]:focus, input[type=search]:focus, input[type=date]:focus, input[type=month]:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--series) 40%, transparent); border-color: var(--series); }
+input[type=text], input[type=password], input[type=search], input[type=date], input[type=month], select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
+input[type=text]:focus, input[type=password]:focus, input[type=search]:focus, input[type=date]:focus, input[type=month]:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--series) 40%, transparent); border-color: var(--series); }
 input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; vertical-align: -3px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
@@ -387,7 +387,7 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
 </head>
 <body><div class="app{{if .Bare}} bare{{end}}">
 {{if not .Bare}}<aside class="side">
-  <a class="brand" href="/ui"><span class="brand-mark">S</span><span>spendbot</span></a>
+  <a class="brand" href="/ui"><span class="brand-mark">S</span><span>spendbot{{with .Account}}<span class="muted small" style="display: block; font-weight: 500; font-size: 12px">{{.}}</span>{{end}}</span></a>
   <nav class="nav" aria-label="Main">
     <a href="/ui" {{if eq .Nav "home"}}class="on" aria-current="page"{{end}}>{{template "icon" "home"}}Home{{if .Open}}<span class="count" title="merchants waiting for an answer">{{.Open}}</span>{{end}}</a>
     <a href="/ui/operations" {{if eq .Nav "operations"}}class="on" aria-current="page"{{end}}>{{template "icon" "ops"}}Operations</a>

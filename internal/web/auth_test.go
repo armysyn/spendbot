@@ -53,7 +53,7 @@ func (b *browser) req(method, path string, form url.Values) *httptest.ResponseRe
 	return w
 }
 
-func openServer(t *testing.T) (http.Handler, *store.Store) {
+func openServer(t *testing.T) (http.Handler, *Gate) {
 	t.Helper()
 	st, err := store.Open(context.Background(), t.TempDir()+"/t.db")
 	if err != nil {
@@ -61,12 +61,21 @@ func openServer(t *testing.T) (http.Handler, *store.Store) {
 	}
 	t.Cleanup(func() { st.Close() })
 	mux := http.NewServeMux()
-	New(st, nil, "", 3, time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))).Register(mux)
-	return mux, st
+	g := gateFor(t, mux, New(st, nil, 3, time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))), "")
+	return mux, g
+}
+
+func firstHash(t *testing.T, g *Gate) string {
+	t.Helper()
+	a, err := g.reg.Get(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a.Hash
 }
 
 func TestPasswordFlow(t *testing.T) {
-	h, st := openServer(t)
+	h, g := openServer(t)
 	me := &browser{h: h, ip: "192.0.2.10"}
 	other := &browser{h: h, ip: "192.0.2.20"}
 
@@ -79,11 +88,11 @@ func TestPasswordFlow(t *testing.T) {
 		t.Errorf("short password: %s", loc)
 	}
 	me.req("POST", "/ui/security", url.Values{"action": {"set"}, "password": {"blue lamp 42"}, "repeat": {"blue lamp 41"}})
-	if v, _ := st.GetKV(context.Background(), kvPassword); v != "" {
+	if v := firstHash(t, g); v != "" {
 		t.Fatal("different passwords must not be saved")
 	}
 	me.req("POST", "/ui/security", url.Values{"action": {"set"}, "password": {"blue lamp 42"}, "repeat": {"blue lamp 42"}})
-	if v, _ := st.GetKV(context.Background(), kvPassword); !strings.HasPrefix(v, "pbkdf2-sha256$") || strings.Contains(v, "blue lamp") {
+	if v := firstHash(t, g); !strings.HasPrefix(v, "pbkdf2-sha256$") || strings.Contains(v, "blue lamp") {
 		t.Fatalf("stored: %q", v)
 	}
 	if w := me.req("GET", "/ui", nil); w.Code != 200 || strings.Contains(w.Body.String(), "No password.") || !strings.Contains(w.Body.String(), "Sign out") {
