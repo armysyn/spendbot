@@ -55,16 +55,25 @@
 <div class="axis" aria-hidden="true">{{range .Cols}}<span>{{.Axis}}</span>{{end}}</div>
 {{end}}
 
-{{/* The request box. Takes dict: Action, State, Ask, AI, Placeholder. */}}
+{{/* The request box. Takes dict: Action, State, Ask, AI, Why (why the model is off), Placeholder. */}}
 {{define "askbox"}}
+{{if .AI}}
 <form class="card ask" method="post" action="{{.Action}}">
   <span class="ic">{{template "icon" "spark"}}</span>
   <input type="hidden" name="state" value="{{.State}}">
   <input type="text" name="prompt" value="{{.Ask}}" maxlength="300" aria-label="Ask in plain words" placeholder="{{.Placeholder}}" required>
   <button class="btn"><span class="spin" aria-hidden="true"></span><span class="label">Apply</span></button>
-  <div class="ask-note muted tiny">{{if .AI}}A model turns your words into filters on top of the current ones; the program computes every number. Your operations are not sent to the model.{{else}}No model is running — amounts (“between 20k and 50k”), counts (“only once”, “more than 3 times”), sorting words are still understood.{{end}}</div>
+  <div class="ask-note muted tiny">A model turns your words into filters on top of the current ones; the program computes every number. Your operations are not sent to the model.</div>
   <div class="thinking-line" aria-live="polite"><span class="dots"><i></i><i></i><i></i></span><span class="thinking-text">Reading your request…</span><span class="thinking-time muted tiny"></span></div>
 </form>
+{{else}}
+<div class="card ask ask-off" aria-disabled="true">
+  <span class="ic">{{template "icon" "spark"}}</span>
+  <input type="text" disabled aria-label="Ask in plain words — needs a model" placeholder="{{.Placeholder}}">
+  <a class="btn secondary" href="/ui/settings#model">{{template "icon" "settings"}}Connect a model</a>
+  <div class="ask-note muted tiny">{{with .Why}}{{.}} {{end}}Requests in plain words need a model: download one in Settings, it runs on this computer. The filters below work without it.</div>
+</div>
+{{end}}
 {{end}}
 
 {{/* The calendar: one day or a range. Takes a picker (see pages.go). Without JavaScript it is two date fields. */}}

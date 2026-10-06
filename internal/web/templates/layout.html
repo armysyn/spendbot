@@ -353,6 +353,9 @@ a.issue-row:hover { background: var(--surface-2); }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .ask.thinking, .ask.thinking *, .ask .spin, .dots i { animation: none !important; } }
+.ask-off { background: var(--surface); }
+.ask-off .ic { background: var(--surface-2); color: var(--muted); }
+.ask-off input[type=text] { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
 .range { display: inline-flex; align-items: center; gap: 4px; }
 .range input { width: 92px; }
 .kpis.stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }

@@ -31,7 +31,7 @@
 </form>
 {{$st := .State}}
 <h2 class="section">Operations</h2>
-{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask about this person: between 120k and 160k · only what I received · in 2026 · largest first")}}
+{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Why" .AIWhy "Placeholder" "Ask about this person: between 120k and 160k · only what I received · in 2026 · largest first")}}
 <form class="toolbar" method="get" action="/ui/transfers">
   <input type="hidden" name="name" value="{{.Name}}">
   <div class="seg" role="group" aria-label="Direction">
@@ -65,7 +65,7 @@
 {{if .Empty}}
 <div class="card empty">{{template "icon" "people"}}<div>No transfers yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
 {{else}}
-{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: sent only once between 20k and 50k · who sent me the most · more than 5 transfers this year")}}
+{{template "askbox" (dict "Action" "/ui/transfers/ask" "State" .State "Ask" .Ask "AI" .AI "Why" .AIWhy "Placeholder" "Ask in plain words: sent only once between 20k and 50k · who sent me the most · more than 5 transfers this year")}}
 
 <form class="toolbar" method="get" action="/ui/transfers">
   <div class="seg" role="group" aria-label="Direction">

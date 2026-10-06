@@ -31,6 +31,20 @@ func (s *Server) WithAI(p llm.Provider) *Server {
 
 func (s *Server) aiReady() bool { return s.ai != nil && s.ai.Available() }
 
+// aiWhy says why requests in plain words are off; empty when the model is ready.
+func (s *Server) aiWhy(ctx context.Context) string {
+	switch {
+	case s.aiReady():
+		return ""
+	case s.ai == nil:
+		return "No model is set up."
+	}
+	if hint := s.modelHint(ctx); hint != "" {
+		return hint
+	}
+	return "The model does not answer right now."
+}
+
 // intent is a request turned into filters. Empty fields leave the current filter alone.
 type intent struct {
 	Min, Max   int64 // tiyn; -1 — not mentioned

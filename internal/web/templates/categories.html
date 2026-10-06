@@ -17,7 +17,7 @@
 {{template "flash" .Flash}}
 
 {{if not .Empty}}
-{{template "askbox" (dict "Action" "/ui/categories/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: what grew the most this year · over 100k in September · only savings · smallest first")}}
+{{template "askbox" (dict "Action" "/ui/categories/ask" "State" .State "Ask" .Ask "AI" .AI "Why" .AIWhy "Placeholder" "Ask in plain words: what grew the most this year · over 100k in September · only savings · smallest first")}}
 
 <form class="toolbar" method="get" action="/ui/categories">
   {{if .Custom}}<input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}">{{end}}

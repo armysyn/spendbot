@@ -12,7 +12,7 @@
   <div class="card empty">{{template "icon" "ops"}}<div>No operations yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
 {{else}}
 
-{{template "askbox" (dict "Action" "/ui/operations/ask" "State" .State "Ask" .Ask "AI" .AI "Placeholder" "Ask in plain words: between 20k and 50k · sent for the first time · largest first · by month")}}
+{{template "askbox" (dict "Action" "/ui/operations/ask" "State" .State "Ask" .Ask "AI" .AI "Why" .AIWhy "Placeholder" "Ask in plain words: between 20k and 50k · sent for the first time · largest first · by month")}}
 
 <form class="toolbar" method="get" action="/ui/operations" id="filters">
   <div class="seg" role="group" aria-label="Kind">
