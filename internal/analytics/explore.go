@@ -15,6 +15,16 @@ import (
 // one), otherwise the same number of days right before.
 func (p Period) Prev() Period {
 	days := p.Days()
+	switch p.Key {
+	case "today":
+		d := p.From.AddDate(0, 0, -1)
+		return Period{Key: "prev", Title: "yesterday", From: d, To: p.From}
+	case "week":
+		// the same weekdays of the previous week
+		return Period{Key: "prev", Title: "the same days of last week", From: p.From.AddDate(0, 0, -7), To: p.To.AddDate(0, 0, -7)}
+	case "month":
+		p.Key = p.From.Format("2006-01")
+	}
 	if isMonthKey(p.Key) {
 		m := time.Date(p.From.Year(), p.From.Month(), 1, 0, 0, 0, 0, p.From.Location())
 		from := m.AddDate(0, -1, 0)

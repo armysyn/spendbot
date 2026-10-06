@@ -53,7 +53,7 @@ func TestPagesRender(t *testing.T) {
 		if !empty {
 			seedOps(t, st)
 		}
-		for _, p := range []string{"/ui", "/ui/analytics", "/ui/analytics?period=2026-08", "/ui/analytics?period=30d&nosave=1",
+		for _, p := range []string{"/ui", "/ui/analytics", "/ui/analytics?period=2026-08", "/ui/analytics?period=30d&nosave=1", "/ui/analytics?period=today", "/ui/analytics?period=week", "/ui/analytics?period=month",
 			"/ui/operations", "/ui/operations?type=all", "/ui/operations?type=transfers", "/ui/operations?cat=Cash&period=all",
 			"/ui/operations?from=2026-08-02&to=2026-08-04&q=magnum", "/ui/operations?m=magnum", "/ui/categories",
 			"/ui/transfers", "/ui/transfers?name=Adam+S."} {

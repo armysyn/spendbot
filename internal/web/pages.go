@@ -113,6 +113,12 @@ func bounds(rows []store.LedgerRow) (first, last time.Time, ok bool) {
 	return day(first), day(last), ok
 }
 
+// periods are the period choices: today, this week and this month by the clock, then the
+// ranges and months built from the data.
+func (s *Server) periods(first, last time.Time) []analytics.Period {
+	return append(analytics.Recent(s.now().In(s.loc), first), analytics.Periods(first, last)...)
+}
+
 // latestMonth is the calendar month of the last day with data.
 func latestMonth(ps []analytics.Period) (analytics.Period, bool) {
 	for _, p := range ps {
@@ -295,7 +301,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	d.Periods = analytics.Periods(first, last)
+	d.Periods = s.periods(first, last)
 	f, custom := filterFrom(q, d.Periods, s.loc)
 	if d.NoSavings = q.Get("nosave") == "1"; d.NoSavings && f.Type == analytics.TypeSpend {
 		if f.Exclude, err = s.st.SavingsNames(ctx); err != nil {
@@ -384,7 +390,7 @@ func (s *Server) operationsCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	var ops []analytics.Op
 	if first, last, ok := bounds(rows); ok {
-		f, _ := filterFrom(r.URL.Query(), analytics.Periods(first, last), s.loc)
+		f, _ := filterFrom(r.URL.Query(), s.periods(first, last), s.loc)
 		if r.URL.Query().Get("nosave") == "1" && f.Type == analytics.TypeSpend {
 			if f.Exclude, err = s.st.SavingsNames(ctx); err != nil {
 				s.fail(w, err)
@@ -591,7 +597,7 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 	var rep analytics.CategoryReport
 	first, last, ok := analytics.Bounds(rows)
 	if ok {
-		d.Periods = analytics.Periods(first, last)
+		d.Periods = s.periods(first, last)
 		if q.Get("period") == "" && q.Get("from") == "" {
 			q.Set("period", "12m")
 		}

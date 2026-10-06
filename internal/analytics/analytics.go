@@ -97,9 +97,9 @@ func Periods(first, last time.Time) []Period {
 		return t
 	}
 	ps := []Period{
-		{Key: "12m", Title: "12 months", From: clamp(end.AddDate(-1, 0, 0)), To: end},
-		{Key: "90d", Title: "90 days", From: clamp(end.AddDate(0, 0, -90)), To: end},
 		{Key: "30d", Title: "30 days", From: clamp(end.AddDate(0, 0, -30)), To: end},
+		{Key: "90d", Title: "90 days", From: clamp(end.AddDate(0, 0, -90)), To: end},
+		{Key: "12m", Title: "12 months", From: clamp(end.AddDate(-1, 0, 0)), To: end},
 		{Key: "all", Title: "all time", From: first, To: end},
 	}
 	for m := time.Date(last.Year(), last.Month(), 1, 0, 0, 0, 0, last.Location()); m.AddDate(0, 1, 0).After(first); m = m.AddDate(0, -1, 0) {
@@ -107,6 +107,30 @@ func Periods(first, last time.Time) []Period {
 	}
 	return ps
 }
+
+// Recent are the periods around today: the day itself, the calendar week from Monday and the
+// calendar month from the 1st, each up to the end of today. They follow the clock, not the
+// data: if the last statement ends earlier, they show what is imported so far.
+func Recent(now, first time.Time) []Period {
+	today := startOfDay(now)
+	end := today.AddDate(0, 0, 1)
+	clamp := func(t time.Time) time.Time {
+		if t.Before(first) && first.Before(end) {
+			return first
+		}
+		return t
+	}
+	monday := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
+	month := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
+	return []Period{
+		{Key: "today", Title: "today", From: today, To: end},
+		{Key: "week", Title: "this week", From: clamp(monday), To: end},
+		{Key: "month", Title: "this month", From: clamp(month), To: end},
+	}
+}
+
+// IsMonth reports a calendar month period ("2026-09"); the rest are ranges such as 30 days.
+func IsMonth(p Period) bool { return isMonthKey(p.Key) }
 
 func minTime(a, b time.Time) time.Time {
 	if a.Before(b) {
