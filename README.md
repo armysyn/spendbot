@@ -43,7 +43,12 @@ local model through Ollama. Your data never leaves your computer unless you conn
   person can count as spending in a category (rent).
 - **Security** — a password for the page with a sign-in page, 30-day sessions, sign-out
   everywhere and a slow-down after wrong guesses; stored as a salted PBKDF2 hash. Without one,
-  every page warns that anyone on the network can open it. Forgot it: `spendbot reset-password`.
+  every page warns that anyone on the network can open it. Forgot it:
+  `spendbot reset-password [account id]` prints a temporary one.
+- **Accounts** — several people on one spendbot, each with a database of their own; the
+  password tells whose account it is. A statement of another person than the account's earlier
+  ones is held with a warning: import it anyway, or create an account for that person and import
+  it there. Telegram, Apple Wallet and ClickHouse belong to the first account.
 - **Issues** — problems and wishes about spendbot written down on the site, with priority,
   the page they are about, comments, closing and search; kept locally for now.
 - **Apple Wallet + Telegram** — the Shortcuts "Transaction" automation sends each payment and

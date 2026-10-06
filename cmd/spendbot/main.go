@@ -17,12 +17,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // time zone database inside the binary: Windows does not have one
 
+	"spendbot/internal/accounts"
 	"spendbot/internal/analysis"
+	"spendbot/internal/auth"
 	"spendbot/internal/bot"
 	"spendbot/internal/classify"
 	"spendbot/internal/clickhouse"
@@ -68,18 +71,19 @@ func main() {
 		waitOnWindows()
 		os.Exit(1)
 	}
-	// Forgot the page password: run "spendbot reset-password" on the computer itself.
+	// Forgot a password: run "spendbot reset-password [account id]" on the computer itself.
 	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
-		if err := resetPassword(cfg); err != nil {
+		arg := ""
+		if len(os.Args) > 2 {
+			arg = os.Args[2]
+		}
+		a, pw, err := resetPassword(cfg, arg)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "reset-password:", err)
 			os.Exit(1)
 		}
-		fmt.Println("The page password is removed and every browser is signed out.")
-		if cfg.WebPassword != "" {
-			fmt.Println("WEB_PASSWORD in the settings file still applies; remove it there to open the page.")
-		} else {
-			fmt.Println("Open the page and set a new password on the Security page.")
-		}
+		fmt.Printf("Account %d (%s) has a new password: %s\n", a.ID, a.Name, pw)
+		fmt.Println("Its browsers are signed out. Sign in with it and change it on the Security page.")
 		return
 	}
 	if err := run(cfg, log); err != nil {
@@ -89,14 +93,68 @@ func main() {
 	}
 }
 
-func resetPassword(cfg config.Config) error {
+// openAccounts opens the accounts registry next to the database. On the first start the
+// database becomes the first account and keeps the password it had.
+func openAccounts(ctx context.Context, cfg config.Config, st *store.Store) (*accounts.Registry, error) {
+	reg, err := accounts.Open(ctx, filepath.Join(filepath.Dir(cfg.DBPath), "accounts.db"))
+	if err != nil {
+		return nil, err
+	}
+	hash, err := st.GetKV(ctx, store.KVWebPassword)
+	if err != nil {
+		reg.Close()
+		return nil, err
+	}
+	made, err := reg.Bootstrap(ctx, cfg.DBPath, "Me", hash, time.Now())
+	if err != nil {
+		reg.Close()
+		return nil, err
+	}
+	if made && hash != "" {
+		if err := st.DeleteKV(ctx, store.KVWebPassword); err != nil {
+			reg.Close()
+			return nil, err
+		}
+	}
+	return reg, nil
+}
+
+// resetPassword gives an account (the first one, or the id given) a new random password and
+// signs its browsers out; the password is printed once.
+func resetPassword(cfg config.Config, arg string) (accounts.Account, string, error) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
-		return err
+		return accounts.Account{}, "", err
 	}
 	defer st.Close()
-	return st.ResetPassword(ctx)
+	reg, err := openAccounts(ctx, cfg, st)
+	if err != nil {
+		return accounts.Account{}, "", err
+	}
+	defer reg.Close()
+	id := int64(1)
+	if arg != "" {
+		if id, err = strconv.ParseInt(arg, 10, 64); err != nil {
+			return accounts.Account{}, "", fmt.Errorf("account id %q: %w", arg, err)
+		}
+	}
+	a, err := reg.Get(ctx, id)
+	if err != nil {
+		return a, "", err
+	}
+	pw, err := auth.RandomPassword()
+	if err != nil {
+		return a, "", err
+	}
+	hash, err := auth.Hash(pw)
+	if err != nil {
+		return a, "", err
+	}
+	if err := reg.SetPassword(ctx, id, hash); err != nil {
+		return a, "", err
+	}
+	return a, pw, reg.DeleteSessions(ctx, id, "")
 }
 
 // waitOnWindows keeps the console window open on an error: otherwise double-clicking the
@@ -210,7 +268,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	goRun(func() { an.Run(ctx) })
 	log.Info("analysis enabled", "clickhouse", cfg.ClickHouseURL != "", "local_llm", cfg.AnalysisLLMURL != "")
 
-	w := web.New(st, an, cfg.WebPassword, cfg.AutoMinHits, cfg.BatchMaxAge, cfg.Location, log)
+	w := web.New(st, an, cfg.AutoMinHits, cfg.BatchMaxAge, cfg.Location, log)
 	if ch != nil {
 		w.WithAnalytics(ch)
 	}
@@ -226,8 +284,48 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if ai == nil {
 		ai = provider
 	}
-	w.WithAI(ai).WithSettings(settings).Register(mux)
-	if !w.HasPassword(ctx) && !isLoopback(cfg.Addr) {
+	w.WithAI(ai).WithSettings(settings)
+
+	// Accounts: the database above is the first one; every other account has a database of
+	// its own with background analysis and backups, and no Telegram, Apple Wallet or ClickHouse.
+	reg, err := openAccounts(ctx, cfg, st)
+	if err != nil {
+		return err
+	}
+	defer reg.Close()
+	build := func(_ context.Context, a accounts.Account) (*web.Server, error) {
+		if a.Primary() {
+			return w, nil
+		}
+		ast, err := store.Open(ctx, a.DBPath)
+		if err != nil {
+			return nil, err
+		}
+		actx, cancel := context.WithCancel(ctx)
+		var awg sync.WaitGroup
+		run := func(fn func()) {
+			awg.Add(1)
+			wg.Add(1)
+			go func() { defer wg.Done(); defer awg.Done(); fn() }()
+		}
+		aan := analysis.New(ast, nil, classify.New(ast, localProvider, cfg.AutoMinHits, cfg.Location, log), localProvider,
+			nil, analysis.Options{Location: cfg.Location, Quiet: cfg.QuietHours, PublicURL: cfg.PublicURL,
+				BatchSize: cfg.BatchSize, BatchMaxAge: cfg.BatchMaxAge, Interval: 2 * time.Minute}, log)
+		run(func() { aan.Run(actx) })
+		acfg := cfg
+		acfg.BackupDir = filepath.Join(cfg.BackupDir, fmt.Sprintf("account-%d", a.ID))
+		run(func() { scheduler.New(acfg, ast, nil, log).Run(actx) })
+		as := settings
+		as.DataDir, as.Telegram, as.ClickHouse, as.IngestURL, as.IngestToken = filepath.Dir(a.DBPath), false, false, "", ""
+		srv := web.New(ast, aan, cfg.AutoMinHits, cfg.BatchMaxAge, cfg.Location, log).WithAI(ai).WithSettings(as)
+		return srv.OnClose(func() { cancel(); awg.Wait(); ast.Close() }), nil
+	}
+	gate := web.NewGate(reg, build, cfg.WebPassword, filepath.Join(filepath.Dir(cfg.DBPath), "uploads"), log)
+	if err := gate.Start(ctx); err != nil {
+		return err
+	}
+	gate.Register(mux)
+	if !gate.HasPassword(ctx) && !isLoopback(cfg.Addr) {
 		log.Warn("web ui WITHOUT password is open to the network", "addr", cfg.Addr)
 	}
 

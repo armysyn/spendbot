@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"testing"
-	"time"
 
 	"spendbot/internal/kaspi"
 )
@@ -99,21 +98,5 @@ func TestMergeCategory(t *testing.T) {
 		if c.Name == "Groceries" && c.Savings {
 			t.Error("the target keeps its own savings mark")
 		}
-	}
-}
-
-func TestResetPassword(t *testing.T) {
-	s := openTest(t)
-	ctx := context.Background()
-	s.SetKV(ctx, KVWebPassword, "pbkdf2-sha256$1$a$b")
-	s.CreateSession(ctx, "x", "", now, now.Add(time.Hour))
-	if err := s.ResetPassword(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := s.GetKV(ctx, KVWebPassword); v != "" {
-		t.Error("password kept")
-	}
-	if ok, _ := s.SessionValid(ctx, "x", now); ok {
-		t.Error("session kept")
 	}
 }

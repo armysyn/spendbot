@@ -35,7 +35,7 @@ func setup(t *testing.T) (http.Handler, *store.Store, *kicks) {
 	t.Cleanup(func() { st.Close() })
 	k := &kicks{}
 	mux := http.NewServeMux()
-	New(st, k, "secret", 3, 30*time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))).Register(mux)
+	gateFor(t, mux, New(st, k, 3, 30*time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))), "secret")
 	return mux, st, k
 }
 
@@ -78,7 +78,7 @@ func TestNoPasswordMeansOpen(t *testing.T) {
 	}
 	defer st.Close()
 	mux := http.NewServeMux()
-	New(st, nil, "", 3, time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))).Register(mux)
+	gateFor(t, mux, New(st, nil, 3, time.Minute, almaty, slog.New(slog.NewTextHandler(io.Discard, nil))), "")
 	if w := do(mux, "GET", "/ui", nil, "", false); w.Code != http.StatusOK {
 		t.Fatalf("open page: %d", w.Code)
 	}

@@ -1,5 +1,5 @@
 // Package web is the page on the home network: merchant question batches, insights,
-// analytics and statement uploads. A password with a sign-in page if set, cross-origin protection from stdlib.
+// analytics and statement uploads of one account; the Gate in front signs browsers in.
 package web
 
 import (
@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"spendbot/internal/accounts"
 	"spendbot/internal/analysis"
 	"spendbot/internal/analytics"
 	"spendbot/internal/clickhouse"
@@ -39,10 +40,9 @@ const maxUpload = 20 << 20
 type Kicker interface{ Kick() }
 
 type Server struct {
-	st       *store.Store
-	kick     Kicker // may be nil when analysis is off
-	password []byte
-	minHits  int
+	st      *store.Store
+	kick    Kicker // may be nil when analysis is off
+	minHits int
 	// batchMaxAge is when a partial batch gets made, for the hint on the home page.
 	batchMaxAge time.Duration
 	loc         *time.Location
@@ -54,10 +54,10 @@ type Server struct {
 	ai          llm.Provider       // understands requests on the operations page; nil — rules only
 	pull        pullState
 	pullMu      sync.Mutex
-	guard       guard
-	pwMu        sync.Mutex
-	pwHash      string // the page password hash, cached
-	pwLoaded    bool
+	gate        *Gate // signs browsers in; set when the Gate builds this Server
+	handlerOnce sync.Once
+	handler     http.Handler
+	closers     []func()
 }
 
 // WithAnalytics makes the analytics page read from ClickHouse.
@@ -66,8 +66,8 @@ func (s *Server) WithAnalytics(ch *clickhouse.Client) *Server {
 	return s
 }
 
-func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge time.Duration, loc *time.Location, log *slog.Logger) *Server {
-	s := &Server{st: st, kick: kick, password: []byte(password), minHits: minHits, batchMaxAge: batchMaxAge,
+func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, loc *time.Location, log *slog.Logger) *Server {
+	s := &Server{st: st, kick: kick, minHits: minHits, batchMaxAge: batchMaxAge,
 		loc: loc, log: log, now: time.Now}
 	s.tmpl = template.Must(template.New("").Funcs(template.FuncMap{
 		"kzt":      func(m int64) string { return money.Format(m, money.DefaultCurrency) },
@@ -157,55 +157,53 @@ func New(st *store.Store, kick Kicker, password string, minHits int, batchMaxAge
 	return s
 }
 
-// Register mounts the pages on mux. Everything under /ui but the sign-in page needs a signed-in
-// browser when a password is set.
-func (s *Server) Register(mux *http.ServeMux) {
-	protect := http.NewCrossOriginProtection()
-	protect.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.log.Warn("web: cross-origin request denied", "method", r.Method, "path", r.URL.Path,
-			"origin", r.Header.Get("Origin"), "sec_fetch_site", r.Header.Get("Sec-Fetch-Site"))
-		http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-	}))
-	ui := http.NewServeMux()
-	ui.HandleFunc("GET /ui", s.index)
-	ui.HandleFunc("GET /ui/login", s.login)
-	ui.HandleFunc("POST /ui/login", s.login)
-	ui.HandleFunc("POST /ui/logout", s.logout)
-	ui.HandleFunc("GET /ui/security", s.security)
-	ui.HandleFunc("POST /ui/security", s.securityAction)
-	ui.HandleFunc("GET /ui/analytics", s.analytics)
-	ui.HandleFunc("GET /ui/operations", s.operations)
-	ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
-	ui.HandleFunc("POST /ui/operations/ask", s.askOn("operations"))
-	ui.HandleFunc("POST /ui/transfers/ask", s.askOn("transfers"))
-	ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
-	ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
-	ui.HandleFunc("GET /ui/categories", s.categories)
-	ui.HandleFunc("GET /ui/income", s.income)
-	ui.HandleFunc("GET /ui/issues", s.issues)
-	ui.HandleFunc("POST /ui/issues", s.createIssue)
-	ui.HandleFunc("GET /ui/issues/{id}", s.issue)
-	ui.HandleFunc("POST /ui/issues/{id}", s.issueAction)
-	ui.HandleFunc("POST /ui/income", s.incomeAction)
-	ui.HandleFunc("POST /ui/categories", s.categoryAction)
-	ui.HandleFunc("POST /ui/savings", s.savings)
-	ui.HandleFunc("GET /ui/transfers", s.transfers)
-	if s.settings != nil {
-		ui.HandleFunc("GET /ui/settings", s.settingsPage)
-		ui.HandleFunc("POST /ui/settings/model", s.chooseModel)
-		ui.HandleFunc("GET /ui/settings/pull", s.pullStatus)
+// OnClose runs fn when the account is deleted: its background work stops, its database closes.
+func (s *Server) OnClose(fn func()) *Server {
+	s.closers = append(s.closers, fn)
+	return s
+}
+
+func (s *Server) close() {
+	for _, fn := range s.closers {
+		fn()
 	}
-	ui.HandleFunc("POST /ui/transfers/category", s.transferCategory)
-	ui.HandleFunc("GET /ui/batch/{id}", s.batch)
-	ui.HandleFunc("POST /ui/batch/{id}", s.answer)
-	ui.HandleFunc("POST /ui/import", s.importPDF)
-	ui.HandleFunc("POST /ui/insight/{id}/dismiss", s.dismiss)
-	h := s.auth(protect.Handler(ui))
-	mux.Handle("/ui", h)
-	mux.Handle("/ui/", h)
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/ui", http.StatusFound)
+}
+
+// Handler serves the account's pages; the Gate in front of it signs browsers in.
+func (s *Server) Handler() http.Handler {
+	s.handlerOnce.Do(func() {
+		ui := http.NewServeMux()
+		ui.HandleFunc("GET /ui", s.index)
+		ui.HandleFunc("GET /ui/analytics", s.analytics)
+		ui.HandleFunc("GET /ui/operations", s.operations)
+		ui.HandleFunc("GET /ui/operations.csv", s.operationsCSV)
+		ui.HandleFunc("POST /ui/operations/ask", s.askOn("operations"))
+		ui.HandleFunc("POST /ui/transfers/ask", s.askOn("transfers"))
+		ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
+		ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
+		ui.HandleFunc("GET /ui/categories", s.categories)
+		ui.HandleFunc("GET /ui/income", s.income)
+		ui.HandleFunc("GET /ui/issues", s.issues)
+		ui.HandleFunc("POST /ui/issues", s.createIssue)
+		ui.HandleFunc("GET /ui/issues/{id}", s.issue)
+		ui.HandleFunc("POST /ui/issues/{id}", s.issueAction)
+		ui.HandleFunc("POST /ui/income", s.incomeAction)
+		ui.HandleFunc("POST /ui/categories", s.categoryAction)
+		ui.HandleFunc("POST /ui/savings", s.savings)
+		ui.HandleFunc("GET /ui/transfers", s.transfers)
+		if s.settings != nil {
+			ui.HandleFunc("GET /ui/settings", s.settingsPage)
+			ui.HandleFunc("POST /ui/settings/model", s.chooseModel)
+			ui.HandleFunc("GET /ui/settings/pull", s.pullStatus)
+		}
+		ui.HandleFunc("POST /ui/transfers/category", s.transferCategory)
+		ui.HandleFunc("GET /ui/batch/{id}", s.batch)
+		ui.HandleFunc("POST /ui/batch/{id}", s.answer)
+		ui.HandleFunc("POST /ui/import", s.importPDF)
+		ui.HandleFunc("POST /ui/insight/{id}/dismiss", s.dismiss)
+		s.handler = ui
 	})
+	return s.handler
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -371,36 +369,93 @@ type importData struct {
 	From   time.Time
 	To     time.Time
 	Err    string
+	// Another person's statement: whose it is, whose this account holds, and the held upload.
+	Other     string
+	Mine      string
+	Upload    string
+	CanCreate bool // this account has a password, so another one can be made
 }
 
+// importPDF imports an uploaded statement. A statement of another person than this account's
+// earlier ones is held: the page asks to import it here anyway or into a new account.
+// A held statement comes back as the "upload" field with confirm=1.
 func (s *Server) importPDF(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
-	f, hdr, err := r.FormFile("pdf")
-	if err != nil {
-		s.show(w, r, "import.html", "Statement import", "home", &importData{Err: "Choose a PDF statement (up to 20 MB)."})
-		return
-	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
-	if err != nil {
-		s.show(w, r, "import.html", "Statement import", "home", &importData{Err: "Could not read the file."})
-		return
+	ctx := r.Context()
+	page := func(d *importData) { s.show(w, r, "import.html", "Statement import", "home", d) }
+	var b []byte
+	name := ""
+	if id := r.FormValue("upload"); id != "" && s.gate != nil {
+		var err error
+		if b, err = s.gate.held(id); err != nil {
+			page(&importData{Err: "The uploaded statement is gone (they are kept for an hour). Upload it again."})
+			return
+		}
+		name = "the held statement"
+	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
+		f, hdr, err := r.FormFile("pdf")
+		if err != nil {
+			page(&importData{Err: "Choose a PDF statement (up to 20 MB)."})
+			return
+		}
+		defer f.Close()
+		if b, err = io.ReadAll(f); err != nil {
+			page(&importData{Err: "Could not read the file."})
+			return
+		}
+		name = hdr.Filename
 	}
 	st, err := statement.ParseKaspiBytes(b, s.loc)
 	if err != nil {
-		s.show(w, r, "import.html", "Statement import", "home", &importData{File: hdr.Filename, Err: "Could not parse the statement: " + err.Error()})
+		page(&importData{File: name, Err: "Could not parse the statement: " + err.Error()})
 		return
 	}
-	res, err := importer.Import(r.Context(), s.st, st, s.now())
+	v := viewerFrom(ctx)
+	if st.Holder != "" && s.gate != nil && v.Account.ID != 0 {
+		switch {
+		case v.Account.Holder == "":
+			if err := s.gate.SetHolder(ctx, v.Account.ID, st.Holder); err != nil {
+				s.fail(w, err)
+				return
+			}
+		case !accounts.SameHolder(v.Account.Holder, st.Holder) && r.FormValue("confirm") != "1":
+			id, err := s.gate.hold(b)
+			if err != nil {
+				s.fail(w, err)
+				return
+			}
+			s.log.Warn("web: statement of another person held", "account", v.Account.ID)
+			page(&importData{File: name, From: st.From, To: st.To, Other: st.Holder, Mine: v.Account.Holder, Upload: id,
+				CanCreate: v.Account.Hash != "" || !v.Open})
+			return
+		}
+	}
+	res, err := importer.Import(ctx, s.st, st, s.now())
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	if id := r.FormValue("upload"); id != "" && s.gate != nil {
+		s.gate.drop(id)
 	}
 	s.log.Info("web: statement imported", "ops", res.Total, "review", res.Review, "auto", res.Auto)
 	if s.kick != nil {
 		s.kick.Kick()
 	}
-	s.show(w, r, "import.html", "Statement import", "home", &importData{File: hdr.Filename, Result: res, From: st.From, To: st.To})
+	page(&importData{File: name, Result: res, From: st.From, To: st.To})
+}
+
+// importBytes imports a statement into this account and returns whose it is.
+func (s *Server) importBytes(ctx context.Context, b []byte) (importer.Result, string, error) {
+	st, err := statement.ParseKaspiBytes(b, s.loc)
+	if err != nil {
+		return importer.Result{}, "", err
+	}
+	res, err := importer.Import(ctx, s.st, st, s.now())
+	if err == nil && s.kick != nil {
+		s.kick.Kick()
+	}
+	return res, st.Holder, err
 }
 
 func (s *Server) dismiss(w http.ResponseWriter, r *http.Request) {

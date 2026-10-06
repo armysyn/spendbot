@@ -82,3 +82,20 @@ func TokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
+
+// RandomPassword makes a temporary password like "kq7m-x3vd-h9pt": 60 bits, no look-alike characters.
+func RandomPassword() (string, error) {
+	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	var out strings.Builder
+	for i, c := range b {
+		if i > 0 && i%4 == 0 {
+			out.WriteByte('-')
+		}
+		out.WriteByte(alphabet[int(c)%len(alphabet)])
+	}
+	return out.String(), nil
+}

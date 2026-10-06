@@ -44,12 +44,12 @@
     <dt>Settings file</dt><dd>{{if .ConfigFile}}<code>{{.ConfigFile}}</code>{{else}}environment variables only{{end}}</dd>
   </dl>
 </div>
-<div class="card">
+{{if .IngestURL}}<div class="card">
   <div class="card-head"><h3>Apple Wallet payments</h3><span class="muted tiny">optional</span></div>
   <p class="small" style="margin-top: 0">In the iPhone Shortcuts app: a <b>Transaction</b> automation → <b>Get Contents of URL</b>, method POST, JSON with <code>amount</code>, <code>merchant</code>, <code>card</code>, <code>at</code>.</p>
   <dl class="kv small"><dt>URL</dt><dd><code>{{.IngestURL}}</code></dd><dt>Header</dt><dd><code>Authorization: Bearer {{.IngestToken}}</code></dd></dl>
   <p class="muted small">The phone must reach this computer (same Wi-Fi or Tailscale). Without the automation everything works from statements.</p>
-</div>
+</div>{{end}}
 </div>
 </div>
 

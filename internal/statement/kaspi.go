@@ -32,6 +32,7 @@ type Op struct {
 // Statement is a parsed statement.
 type Statement struct {
 	Account  string // card number, such as *1234
+	Holder   string // the account holder's full name from the cover; empty when not found
 	From, To time.Time
 	Ops      []Op
 	// Totals from the header summary by Kaspi label (see kaspi.Summaries), in tiyn.
@@ -67,6 +68,7 @@ var (
 	amountRe = regexp.MustCompile(`^[+-]\s?[\d\x{00a0} ]+,\d{2}\s?(₸|\$|€|₽)$`)
 	periodRe = regexp.MustCompile(kaspi.PeriodPattern)
 	cardRe   = regexp.MustCompile(`^\*\d{4}$`)
+	holderRe = regexp.MustCompile(kaspi.HolderPattern)
 )
 
 // segment is a continuous piece of text on a page line.
@@ -140,6 +142,9 @@ func parseKaspiLines(lines [][]segment, loc *time.Location) (Statement, error) {
 
 	for li, line := range lines {
 		text := joinLine(line)
+		if m := holderRe.FindStringSubmatch(text); m != nil && st.Holder == "" {
+			st.Holder = strings.Join(strings.Fields(m[1]), " ")
+		}
 		if m := periodRe.FindStringSubmatch(text); m != nil && st.From.IsZero() {
 			st.From, _ = time.ParseInLocation("02.01.06", m[1], loc)
 			st.To, _ = time.ParseInLocation("02.01.06", m[2], loc)

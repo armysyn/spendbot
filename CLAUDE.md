@@ -67,6 +67,14 @@ requests from the owner may be Russian, Kazakh or English — parsing them is da
 - Detect things by code when the data says so (salary is "Зарплата"; people look like
   "Name I."), not by a model.
 
+## Accounts
+
+Every account has its own SQLite database (`data/accounts/account-N.db`; the first one is the
+original database) and its own `web.Server`; `web.Gate` signs browsers in and hands each request
+to the account's Server. The registry (`accounts.db`) holds names, password hashes, statement
+holders and sessions. Never let a query or a page reach another account's store. Telegram, Apple
+Wallet and ClickHouse are wired to the first account only.
+
 ## Code
 
 - Go as in the repo: `gofmt`, small packages, comments that explain why, errors returned not

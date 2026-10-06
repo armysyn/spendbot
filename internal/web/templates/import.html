@@ -1,6 +1,34 @@
 {{template "head" .Page}}
 <div class="page-head"><div><h1>Statement import</h1>{{if .File}}<div class="sub">{{.File}}{{if not .Err}} · {{date .From}} – {{date .To}}{{end}}</div>{{end}}</div></div>
-{{if .Err}}
+{{if .Other}}
+  <div class="flash warn">{{template "icon" "people"}}<div>
+    <b>This looks like another person's statement.</b> It belongs to <b>{{.Other}}</b>, while this account's statements belong to <b>{{.Mine}}</b>.
+    Mixing two people's money makes every number wrong — better give {{.Other}} an account of their own.
+  </div></div>
+  <div class="grid g2">
+    <form class="card" method="post" action="/ui/import/new-account" style="display: grid; gap: 10px">
+      <div class="card-head" style="margin-bottom: 0"><h3>Create an account for {{.Other}}</h3><span class="pill ok">recommended</span></div>
+      <input type="hidden" name="upload" value="{{.Upload}}">
+      {{if .CanCreate}}
+      <div class="field"><label for="na">Name</label><input id="na" type="text" name="name" value="{{.Other}}" maxlength="40" required></div>
+      <div class="grid g2" style="gap: 10px">
+        <div class="field"><label for="np">Their password</label><input id="np" type="password" name="password" minlength="8" autocomplete="new-password" required></div>
+        <div class="field"><label for="nr">Repeat it</label><input id="nr" type="password" name="repeat" minlength="8" autocomplete="new-password" required></div>
+      </div>
+      <div class="muted tiny">The statement is imported there and this browser signs in to the new account. Sign out to come back to yours.</div>
+      <div><button class="btn">{{template "icon" "plus"}}Create account and import</button></div>
+      {{else}}
+      <p class="muted small" style="margin: 0">Set a password for your account first (<a href="/ui/security">Security</a>): with several accounts the password tells whose account it is. Then upload the statement again.</p>
+      {{end}}
+    </form>
+    <form class="card" method="post" action="/ui/import" style="display: grid; gap: 10px; align-content: start">
+      <div class="card-head" style="margin-bottom: 0"><h3>Import into this account anyway</h3></div>
+      <input type="hidden" name="upload" value="{{.Upload}}"><input type="hidden" name="confirm" value="1">
+      <p class="muted small" style="margin: 0">For example, a joint card or the same person under a changed name. The statement is kept for an hour while you decide.</p>
+      <div><button class="btn secondary">Import here</button></div>
+    </form>
+  </div>
+{{else if .Err}}
   <div class="flash bad">{{template "icon" "x"}}<div>{{.Err}}</div></div>
   <a class="btn" href="/ui#upload">Try another file</a>
 {{else}}
