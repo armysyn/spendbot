@@ -141,3 +141,16 @@ func (s *Store) DataVersion(ctx context.Context) (string, error) {
 		(SELECT MAX(deleted_at) FROM deleted_txs)`).Scan(&n, &upd, &del)
 	return fmt.Sprintf("%d|%s|%s", n, upd.String, del.String), err
 }
+
+// Version changes with every write through this store: SQLite's total_changes() counts the rows
+// changed on the one connection there is, so two writes in the same second still differ.
+// Caches of what is read from the database compare it.
+func (s *Store) Version(ctx context.Context) (string, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, "SELECT total_changes()").Scan(&n)
+	if err != nil {
+		return "", err
+	}
+	v, err := s.DataVersion(ctx)
+	return fmt.Sprintf("%d|%s", n, v), err
+}

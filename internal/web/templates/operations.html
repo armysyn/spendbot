@@ -105,6 +105,7 @@
 </div>
 {{end}}
 
+<template id="cat-options">{{range .Categories}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</template>
 {{if .Days}}
   {{$cats := .Categories}}{{$back := .Back}}{{$type := .Type}}
   {{if .Flat}}

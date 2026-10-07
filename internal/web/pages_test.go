@@ -462,3 +462,24 @@ func TestRangeLabel(t *testing.T) {
 		}
 	}
 }
+
+// The cached operations follow every change at once, even within the same second.
+func TestLedgerCacheFollowsWrites(t *testing.T) {
+	h, st, _ := setup(t)
+	purchase, _ := seedOps(t, st)
+	page := func() string { return do(h, "GET", "/ui/operations?period=all&cat=Home", nil, "", true).Body.String() }
+	if strings.Contains(page(), "Magnum") {
+		t.Fatal("Magnum is not in Home yet")
+	}
+	home, _ := st.FindCategory(context.Background(), "Home")
+	for i := 0; i < 3; i++ { // several writes back to back
+		post(h, "/ui/op/"+itoa(purchase)+"/category", url.Values{"category": {itoa(home.ID)}})
+		if !strings.Contains(page(), "Magnum") {
+			t.Fatalf("write %d not seen", i)
+		}
+		post(h, "/ui/op/"+itoa(purchase)+"/category", url.Values{"category": {"none"}})
+		if strings.Contains(page(), "Magnum") {
+			t.Fatalf("undo %d not seen", i)
+		}
+	}
+}

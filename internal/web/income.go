@@ -66,7 +66,7 @@ func (s *Server) income(w http.ResponseWriter, r *http.Request) {
 	for _, n := range names {
 		sources[n] = true
 	}
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return

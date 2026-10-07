@@ -76,7 +76,7 @@ func (s *Server) wealth(w http.ResponseWriter, r *http.Request) {
 	d.Cards = analytics.CardSeries(cards)
 	series = append(series, d.Cards...)
 
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return

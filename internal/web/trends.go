@@ -40,7 +40,7 @@ func (s *Server) trends(w http.ResponseWriter, r *http.Request) {
 	sq := cloneValues(q)
 	sq.Del("msg")
 	d.State = sq.Encode()
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return

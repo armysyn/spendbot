@@ -150,10 +150,17 @@ type homeSummary struct {
 	Pace      int64 // projected month total while the month is in progress
 	Recent    []analytics.Op
 	Flow      analytics.Flow // income and what went out this month
+	// the long view: the last 12 months and net worth now
+	Rate12     float64
+	HasRate12  bool
+	Net        int64
+	HasNet     bool
+	Cushion    float64
+	HasCushion bool
 }
 
 func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +190,9 @@ func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
 			sources[n] = true
 		}
 		h.Flow = analytics.CashFlow(rows, analytics.FlowFilter{Period: m, Exclude: savings, Sources: sources, Salaries: salaries, People: true})
+		if err := s.longView(ctx, h, rows, last, analytics.FlowFilter{Exclude: savings, Sources: sources, Salaries: salaries, People: true}); err != nil {
+			return nil, err
+		}
 		prev := m.Prev()
 		if h.HasPrev = !prev.From.Before(first); h.HasPrev {
 			h.Change = changeOf(analytics.Compare(h.D.Totals.Spend, analytics.Build(rows, prev, nil).Totals.Spend))
@@ -195,13 +205,44 @@ func (s *Server) homeSummary(ctx context.Context) (*homeSummary, error) {
 			h.Pace = h.D.Totals.Spend * int64(total) / int64(days)
 		}
 	}
-	all := analytics.Period{Key: "all", From: first, To: last.AddDate(0, 0, 1)}
-	ops := analytics.Operations(rows, analytics.Filter{Period: all, Type: analytics.TypeAll}).Ops
+	// the latest few: the last two months are plenty and spare sorting every operation
+	recent := analytics.Period{Key: "recent", From: last.AddDate(0, 0, -60), To: last.AddDate(0, 0, 1)}
+	ops := analytics.Operations(rows, analytics.Filter{Period: recent, Type: analytics.TypeAll}).Ops
 	if len(ops) > 8 {
 		ops = ops[:8]
 	}
 	h.Recent = ops
 	return h, nil
+}
+
+// longView fills the home page's strip: the savings rate of the last 12 months, net worth and
+// the cushion, counted as on the Trends and Net worth pages.
+func (s *Server) longView(ctx context.Context, h *homeSummary, rows []store.LedgerRow, last time.Time, f analytics.FlowFilter) error {
+	f.Period = analytics.Period{From: last.AddDate(-1, 0, 1), To: last.AddDate(0, 0, 1)}
+	flow := analytics.CashFlow(rows, f)
+	if flow.Income > 0 {
+		h.Rate12, h.HasRate12 = float64(flow.Income-flow.Out)*100/float64(flow.Income), true
+	}
+	hs, err := s.st.Holdings(ctx, s.loc)
+	if err != nil {
+		return err
+	}
+	cards, err := s.st.CardBalances(ctx, s.loc)
+	if err != nil {
+		return err
+	}
+	series := analytics.CardSeries(cards)
+	for _, x := range hs {
+		series = append(series, analytics.Series{Name: x.Name, Kind: x.Kind, Debt: store.IsDebtKind(x.Kind), Liquid: x.Liquid, Points: x.Values})
+	}
+	if len(series) == 0 {
+		return nil
+	}
+	now := s.now().In(s.loc)
+	wr := analytics.BuildWealth(series, nil, nil, flow, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, s.loc))
+	h.Net, h.HasNet = wr.Now.Net, true
+	h.Cushion, h.HasCushion = wr.Cushion, wr.HasCushion
+	return nil
 }
 
 // ---- operations ----
@@ -249,7 +290,7 @@ type operationsData struct {
 	CSV          string
 }
 
-const opsPage = 300
+const opsPage = 200
 
 // filterFrom reads the operations filter from the query string.
 func filterFrom(q url.Values, ps []analytics.Period, loc *time.Location) (analytics.Filter, bool) {
@@ -360,7 +401,7 @@ func newPicker(path string, q url.Values, cur analytics.Period, custom bool, row
 func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	d := &operationsData{Flash: r.URL.Query().Get("msg")}
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -455,7 +496,7 @@ func cloneValues(q url.Values) url.Values {
 // operationsCSV exports the filtered operations for a spreadsheet.
 func (s *Server) operationsCSV(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -658,7 +699,7 @@ func (s *Server) categories(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return

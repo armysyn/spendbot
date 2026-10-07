@@ -72,6 +72,7 @@ a { color: inherit; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 9px; text-decoration: none; color: var(--ink-2); font-weight: 500; }
 .nav a:hover { background: var(--surface-2); color: var(--ink); }
+.nav-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: 14px 10px 4px; }
 .nav a.on { background: var(--surface-2); color: var(--ink); }
 .nav a.on .i { color: var(--accent); }
 .nav .count.muted-count { background: var(--surface-3); color: var(--ink-2); }
@@ -90,6 +91,7 @@ main { padding: 28px 36px 80px; max-width: 1180px; width: 100%; }
   .nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; flex: 1; }
   .nav a { padding: 7px 10px; white-space: nowrap; gap: 7px; font-size: 14px; }
   .nav a .i { display: none; }
+  .nav-group { display: none; }
   .side-foot { margin: 0; flex-direction: row; }
   .side-foot .btn { display: none; }
   .theme span { display: none; }
@@ -365,6 +367,9 @@ a.issue-row:hover { background: var(--surface-2); }
 .stackbar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; gap: 2px; background: var(--surface); }
 .stackbar > * { display: block; height: 100%; min-width: 2px; }
 .stackbar > a:hover, .stackbar > a:focus-visible { filter: brightness(1.12); outline: 2px solid var(--ink); outline-offset: -2px; }
+.long-view { display: flex; gap: 10px 32px; flex-wrap: wrap; padding: 14px 20px; margin-top: 14px; }
+.long-view a { display: flex; flex-direction: column; text-decoration: none; }
+.long-view a b { font-size: 18px; }
 .year-heat + .year-heat { margin-top: 14px; }
 .year-head { margin-bottom: 4px; font-size: 14px; }
 .col-val.bad { color: var(--bad); } .col-val.good { color: var(--good); }
@@ -446,10 +451,12 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     <a href="/ui/operations" {{if eq .Nav "operations"}}class="on" aria-current="page"{{end}}>{{template "icon" "ops"}}Operations</a>
     <a href="/ui/analytics" {{if eq .Nav "analytics"}}class="on" aria-current="page"{{end}}>{{template "icon" "chart"}}Analytics</a>
     <a href="/ui/trends" {{if eq .Nav "trends"}}class="on" aria-current="page"{{end}}>{{template "icon" "trend"}}Trends</a>
+    <div class="nav-group">Plan</div>
     <a href="/ui/wealth" {{if eq .Nav "wealth"}}class="on" aria-current="page"{{end}}>{{template "icon" "bank"}}Net worth</a>
     <a href="/ui/income" {{if eq .Nav "income"}}class="on" aria-current="page"{{end}}>{{template "icon" "wallet"}}Income</a>
     <a href="/ui/categories" {{if eq .Nav "categories"}}class="on" aria-current="page"{{end}}>{{template "icon" "tag"}}Categories</a>
     <a href="/ui/transfers" {{if eq .Nav "transfers"}}class="on" aria-current="page"{{end}}>{{template "icon" "people"}}Transfers</a>
+    <div class="nav-group">App</div>
     <a href="/ui/issues" {{if eq .Nav "issues"}}class="on" aria-current="page"{{end}}>{{template "icon" "flag"}}Issues{{if .Issues}}<span class="count muted-count" title="open issues">{{.Issues}}</span>{{end}}</a>
     <a href="/ui/security" {{if eq .Nav "security"}}class="on" aria-current="page"{{end}}>{{template "icon" "shield"}}Security{{if .NoPassword}}<span class="count muted-count" title="no password">!</span>{{end}}</a>
     <a href="/ui/settings" {{if eq .Nav "settings"}}class="on" aria-current="page"{{end}}>{{template "icon" "settings"}}Settings</a>
@@ -489,6 +496,24 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     try { next ? localStorage.setItem('theme', next) : localStorage.removeItem('theme'); } catch (e) {}
     paint();
   });
+})();
+// Calendar days carry only their date and amount; the tooltip and the side panel are made
+// when the pointer or the focus reaches a day.
+(() => {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fill = e => {
+    const a = e.target.closest && e.target.closest('.heat a[data-d]');
+    if (!a || a.dataset.tip) return;
+    const [y, m, d] = a.dataset.d.split('-').map(Number), when = new Date(y, m - 1, d);
+    const v = Number(a.dataset.v) / 100;
+    const ns = a.closest('.heat').dataset.ns ? '&nosave=1' : '';
+    a.dataset.tip = days[when.getDay()] + ' ' + d + ' ' + months[m - 1] + ' ' + y + ' · ' +
+      v.toLocaleString('en-US', { maximumFractionDigits: 2 }) + '\u00a0₸';
+    a.dataset.panel = '/ui/panel/day?d=' + a.dataset.d + ns;
+    if (ns) a.href += ns;
+  };
+  for (const ev of ['pointerover', 'focusin', 'pointerdown']) document.addEventListener(ev, fill, true);
 })();
 // Tooltips for [data-tip]: mouse, keyboard focus, touch.
 (() => {
@@ -679,6 +704,19 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
   back.addEventListener('click', close);
   document.getElementById('drawer-close').addEventListener('click', close);
 })();
+// Category choices are in the page once (#cat-options): a row's list is filled in when its
+// editor opens, keeping the current choice selected.
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d.matches || !d.matches('details.edit') || !d.open) return;
+  const sel = d.querySelector('select[data-fill]'), tpl = document.getElementById('cat-options');
+  if (!sel || !tpl) return;
+  const keep = sel.value, none = sel.querySelector('option[value=none]');
+  sel.querySelectorAll('option:not([value=""]):not([value=none])').forEach(o => o.remove());
+  sel.insertBefore(tpl.content.cloneNode(true), none);
+  sel.value = keep;
+  sel.removeAttribute('data-fill');
+}, true);
 // One open edit popover at a time; Escape or a click outside closes it.
 (() => {
   const close = except => document.querySelectorAll('details.edit[open]').forEach(d => { if (d !== except) d.open = false; });
