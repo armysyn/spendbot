@@ -55,6 +55,8 @@ type Lender struct {
 
 type WealthReport struct {
 	Points      []WealthPoint
+	HasData     bool // at least one asset or debt has a value, or a statement printed a balance
+	Today       time.Time
 	Now         WealthPoint
 	YearAgo     WealthPoint
 	HasYearAgo  bool
@@ -119,7 +121,7 @@ func loanPart(r store.LedgerRow, debtCats map[string]bool) int64 {
 // BuildWealth computes the report up to today. flow is the cash flow of the last 12 months
 // (for the cushion and the debt load).
 func BuildWealth(series []Series, all []store.LedgerRow, debtCats []string, flow Flow, today time.Time) WealthReport {
-	var rep WealthReport
+	rep := WealthReport{Today: today}
 	loc := today.Location()
 	var first time.Time
 	for _, s := range series {
@@ -146,7 +148,9 @@ func BuildWealth(series []Series, all []store.LedgerRow, debtCats []string, flow
 		p.Net = p.Assets - p.Debts
 		return p
 	}
+	rep.Now.Month = today
 	if !first.IsZero() {
+		rep.HasData = true
 		cur := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, loc)
 		for m := time.Date(first.Year(), first.Month(), 1, 0, 0, 0, 0, loc); !m.After(cur); m = m.AddDate(0, 1, 0) {
 			end := m.AddDate(0, 1, -1)
@@ -173,7 +177,8 @@ func BuildWealth(series []Series, all []store.LedgerRow, debtCats []string, flow
 	if n := int64(len(flow.Months)); n > 0 {
 		rep.MonthOut = flow.Out / n
 	}
-	if rep.MonthOut > 0 {
+	// the cushion means something only once some money is known to be at hand
+	if rep.MonthOut > 0 && rep.Now.Liquid > 0 {
 		rep.Cushion, rep.HasCushion = float64(rep.Now.Liquid)/float64(rep.MonthOut), true
 	}
 	cats := map[string]bool{}
