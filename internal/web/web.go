@@ -237,6 +237,9 @@ func (s *Server) Handler() http.Handler {
 		ui.HandleFunc("GET /ui/batch/{id}", s.batch)
 		ui.HandleFunc("POST /ui/batch/{id}", s.answer)
 		ui.HandleFunc("POST /ui/import", s.importPDF)
+		ui.HandleFunc("POST /ui/import/stage", s.stageUpload)
+		ui.HandleFunc("GET /ui/import/staged", s.stagedPage)
+		ui.HandleFunc("POST /ui/import/staged", s.stagedAction)
 		ui.HandleFunc("POST /ui/insight/{id}/dismiss", s.dismiss)
 		s.handler = ui
 	})
@@ -259,6 +262,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 type indexData struct {
 	Page
 	Update    *update.Status // a newer release, shown on the first account's home page
+	Staged    int            // statements waiting to be imported
 	Summary   *homeSummary   // nil — no data yet
 	ModelHint string         // the model is not ready — hint to open the settings
 	Open      []store.Batch
@@ -293,6 +297,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	d.Waiting, d.BatchAt = n, oldest.Add(s.batchMaxAge)
 	d.Flash = r.URL.Query().Get("msg")
 	d.ModelHint = s.modelHint(ctx)
+	d.Staged = s.stagedCount(r)
 	if st := s.updateStatus(); st != nil && st.Newer && s.canUpdate() {
 		d.Update = st
 	}

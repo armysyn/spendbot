@@ -367,6 +367,8 @@ a.issue-row:hover { background: var(--surface-2); }
 .stackbar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; gap: 2px; background: var(--surface); }
 .stackbar > * { display: block; height: 100%; min-width: 2px; }
 .stackbar > a:hover, .stackbar > a:focus-visible { filter: brightness(1.12); outline: 2px solid var(--ink); outline-offset: -2px; }
+.staged-bar { position: sticky; bottom: 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 14px 0; background: linear-gradient(transparent, var(--bg) 35%); margin-top: 6px; }
+.staged-row input[type=checkbox] { width: 18px; height: 18px; }
 .long-view { display: flex; gap: 10px 32px; flex-wrap: wrap; padding: 14px 20px; margin-top: 14px; }
 .long-view a { display: flex; flex-direction: column; text-decoration: none; }
 .long-view a b { font-size: 18px; }

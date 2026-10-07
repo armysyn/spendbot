@@ -548,8 +548,15 @@ func (g *Gate) drop(id string) {
 // there and signs this browser in to it.
 func (g *Gate) importNewAccount(w http.ResponseWriter, r *http.Request, v viewer, list []accounts.Account) {
 	ctx := r.Context()
-	upload := r.PostFormValue("upload")
-	b, err := g.held(upload)
+	// a held upload, or a statement from the list of ones waiting
+	upload, staged := r.PostFormValue("upload"), r.PostFormValue("staged")
+	var b []byte
+	var err error
+	if staged != "" {
+		b, err = g.stagedBytes(v.Account.ID, staged)
+	} else {
+		b, err = g.held(upload)
+	}
 	if err != nil {
 		http.Redirect(w, r, "/ui?msg="+urlq("The uploaded statement is gone (they are kept for an hour). Upload it again."), http.StatusSeeOther)
 		return
@@ -593,7 +600,11 @@ func (g *Gate) importNewAccount(w http.ResponseWriter, r *http.Request, v viewer
 			return
 		}
 	}
-	g.drop(upload)
+	if staged != "" {
+		g.unstage(v.Account.ID, staged)
+	} else {
+		g.drop(upload)
+	}
 	if err := g.startSession(w, r, na.ID); err != nil {
 		g.fail(w, err)
 		return

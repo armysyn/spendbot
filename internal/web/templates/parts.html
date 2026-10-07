@@ -114,3 +114,38 @@
     </div>
   </div>
 {{end}}{{end}}
+
+{{/* The statement uploader: one or many PDFs, picked or dropped; they are collected, not imported. */}}
+{{define "uploader"}}
+<form id="upload-form" class="drop" method="post" action="/ui/import/stage" enctype="multipart/form-data">
+  <span class="ic">{{template "icon" "upload"}}</span>
+  <div style="flex: 1; min-width: 220px">
+    <b>Kaspi Gold PDF statements</b>
+    <div class="muted small">Kaspi.kz → My Bank → Kaspi Gold → Statement, up to a year each. Pick several at once: they are collected and checked first, and imported when you press Import.</div>
+    <div id="upload-status" class="muted small" style="margin-top: 4px">Pick or drop one or more files<span class="desktop-only"> here</span>.</div>
+  </div>
+  <label class="btn big" for="pdf">Choose PDFs</label>
+  <input id="pdf" class="hidden-input" type="file" name="pdf" accept=".pdf,application/pdf" multiple>
+  <noscript><button class="btn">Add</button></noscript>
+</form>
+<script>
+(() => {
+  const form = document.getElementById('upload-form');
+  const input = document.getElementById('pdf');
+  const status = document.getElementById('upload-status');
+  input.addEventListener('change', () => {
+    if (!input.files.length) return;
+    status.textContent = 'Adding ' + input.files.length + (input.files.length === 1 ? ' file' : ' files') + '…';
+    form.classList.add('busy');
+    form.submit();
+  });
+  for (const ev of ['dragenter', 'dragover']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.add('over'); });
+  for (const ev of ['dragleave', 'drop']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.remove('over'); });
+  form.addEventListener('drop', e => {
+    if (!e.dataTransfer.files.length) return;
+    input.files = e.dataTransfer.files;
+    input.dispatchEvent(new Event('change'));
+  });
+})();
+</script>
+{{end}}
