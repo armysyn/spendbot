@@ -90,6 +90,18 @@
 </div>
 </div>
 
+<div class="card" style="margin-top: 14px" id="calendar">
+  <div class="card-head"><h3>Calendar of spending</h3><span class="muted tiny">every day of every year, one scale for all: darker — more spent; click a day</span></div>
+  {{with .Weekdays}}<p class="small" style="margin-top: 0">On average the most goes out on <b>{{(index . 0).Label}}s</b> ({{compact (index . 0).Avg}} a day){{$l := index . (subi (len .) 1)}}, the least on <b>{{$l.Label}}s</b> ({{compact $l.Avg}}).</p>{{end}}
+  {{range .Years}}
+  <div class="year-heat">
+    <div class="year-head"><b>{{.Year}}</b> <span class="muted tiny">{{compact .Total}} · {{.Days}} {{plural .Days "day" "days"}} with spending</span></div>
+    {{template "heatgrid" (dict "H" .H "NS" $.NS)}}
+  </div>
+  {{end}}
+  <div class="legend">less <span class="sw" style="background: var(--heat-0)"></span><span class="sw" style="background: var(--heat-1)"></span><span class="sw" style="background: var(--heat-2)"></span><span class="sw" style="background: var(--heat-3)"></span><span class="sw" style="background: var(--heat-4)"></span> more · shades are quartiles of all days with spending</div>
+</div>
+
 <div class="card" style="margin-top: 14px">
   <div class="card-head"><h3>Seasonality</h3><span class="muted tiny">average spending in each month of the year, over the years that have it in full</span></div>
   <div class="cols" style="height: 170px" role="img" aria-label="Average spending by month of the year">

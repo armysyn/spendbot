@@ -30,6 +30,7 @@ type wealthData struct {
 	Archived  []holdingRow
 	Cards     []analytics.Series
 	Chart     template.HTML
+	FI        analytics.FI
 	Today     string
 	AssetKind []string
 	DebtKind  []string
@@ -102,7 +103,9 @@ func (s *Server) wealth(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	d.R = analytics.BuildWealth(series, rows, d.DebtCats, analytics.CashFlow(rows, f), today)
+	flow := analytics.CashFlow(rows, f)
+	d.R = analytics.BuildWealth(series, rows, d.DebtCats, flow, today)
+	d.FI = analytics.BuildFI(flow.Income, flow.Out, d.R.Now.Net)
 	d.Chart = wealthSVG(d.R.Points)
 	s.show(w, r, "wealth.html", "Net worth", "wealth", d)
 }

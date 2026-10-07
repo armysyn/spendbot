@@ -24,6 +24,9 @@ type trendsData struct {
 	Lines       template.HTML
 	Rolling     template.HTML
 	Slots       []template.CSS // colour per structure part, in order
+	Years       []yearHeat     // the calendar of every year, the latest first
+	Weekdays    []analytics.Bar
+	NS          string
 }
 
 // structureSlots are the categorical colours for the structure (validated palette, adjacent
@@ -80,6 +83,12 @@ func (s *Server) trends(w http.ResponseWriter, r *http.Request) {
 	if d.Last12Rate.Income > 0 {
 		d.Last12Rate.HasRate = true
 		d.Last12Rate.Rate = float64(d.Last12Rate.Net) * 100 / float64(d.Last12Rate.Income)
+	}
+	all := analytics.Period{Key: "all", From: first, To: last.AddDate(0, 0, 1)}
+	d.Years = heatYears(rows, all, f.Exclude)
+	d.Weekdays = analytics.Build(rows, all, f.Exclude).Weekdays
+	if len(f.Exclude) > 0 {
+		d.NS = "1"
 	}
 	d.Lines = linesSVG(ms)
 	d.Rolling = rollingSVG(d.T.Rolling)

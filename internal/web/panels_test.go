@@ -34,7 +34,7 @@ func TestPanels(t *testing.T) {
 		t.Errorf("bad day: %d", code)
 	}
 	// the charts open panels
-	if _, b = get("/ui/trends"); !strings.Contains(b, `data-panel="/ui/panel/category?`) {
+	if _, b = get("/ui/trends"); !strings.Contains(b, `data-panel="/ui/panel/category?`) || !strings.Contains(b, `class="year-heat"`) || !strings.Contains(b, `data-panel="/ui/panel/day?`) {
 		t.Error("trends structure must open panels")
 	}
 	if _, b = get("/ui/analytics?period=all"); !strings.Contains(b, `data-panel="/ui/panel/merchant?`) || !strings.Contains(b, `data-panel="/ui/panel/day?`) {

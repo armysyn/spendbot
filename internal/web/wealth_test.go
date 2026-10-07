@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"spendbot/internal/kaspi"
 	"spendbot/internal/store"
 )
 
@@ -45,8 +46,11 @@ func TestWealthPage(t *testing.T) {
 	if hs, _ = st.Holdings(ctx, almaty); len(hs[0].Values) != 2 || hs[0].Values[1].Amount != 130_000_000 {
 		t.Fatalf("values: %+v", hs[0].Values)
 	}
+	st.InsertTx(ctx, store.Tx{ExternalKey: "sal", OccurredAt: time.Date(2026, 9, 10, 12, 0, 0, 0, almaty), AmountMinor: -100000000,
+		Currency: "KZT", MerchantRaw: kaspi.Salary, MerchantNorm: "salary", Kind: kaspi.TopUp, Source: store.SourceImport,
+		Status: store.StatusInfo, CreatedAt: time.Now()})
 	page := b.req("GET", "/ui/wealth", nil).Body.String()
-	for _, want := range []string{"Net worth", "900,000", "1,300,000", "Car loan", "Cushion"} {
+	for _, want := range []string{"Net worth", "900,000", "1,300,000", "Car loan", "Cushion", "Financial independence", "≈ you"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
 		}

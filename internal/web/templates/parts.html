@@ -98,3 +98,17 @@
   <noscript><form class="actions" method="get" action="{{.Path}}"><input type="date" name="from" value="{{.From}}" aria-label="From"><input type="date" name="to" value="{{.To}}" aria-label="To"><button class="btn sm secondary">Show</button></form></noscript>
 </div>
 {{end}}
+
+{{/* A calendar heatmap: weeks as columns, Monday on top. Takes dict: H (a heatmap), NS (nosave). */}}
+{{define "heatgrid"}}{{$ns := .NS}}{{with .H}}
+  <div class="heat-wrap">
+    <div class="heat-days" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div>
+    <div class="heat" style="grid-template-columns: repeat({{len .Weeks}}, minmax(10px, 20px))">
+      {{$months := .Months}}
+      {{range $wi, $w := .Weeks}}
+        <span class="m">{{range $months}}{{if eq .Col $wi}}{{.Label}}{{end}}{{end}}</span>
+        {{range $w}}{{if .In}}<a class="d l{{.Level}}" href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-panel="{{link "/ui/panel/day" "d" (ymd .Date) "nosave" $ns}}" data-tip="{{wday .Date}} {{date .Date}} · {{kzt .Value}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
+      {{end}}
+    </div>
+  </div>
+{{end}}{{end}}

@@ -27,6 +27,29 @@
   {{else}}<div class="empty small">{{template "icon" "chart"}}<div>Add what you own and owe below — the chart starts from the first value.</div></div>{{end}}
 </div>
 
+{{with .FI}}{{if .Income}}
+<div class="card" id="fi">
+  <div class="card-head"><h3>Financial independence</h3><span class="muted tiny">rough: 25 years of spending, 5% real return a year</span></div>
+  <div class="kpis stats" style="margin-bottom: 14px">
+    <div class="kpi"><div class="label">Years to go</div><div class="value num">{{if .Done}}<span class="good">there already</span>{{else if .Never}}<span class="bad">never</span>{{else}}{{.Years}}{{end}}</div>
+      <div class="note">{{if .Never}}nothing is saved: more goes out than comes in{{else}}at today's savings rate of {{pct .Rate}}{{end}}</div></div>
+    <div class="kpi"><div class="label">Target</div><div class="value num">{{compact .Target}}</div><div class="note">{{compact .Spend}} a year × 25 — the 4% rule</div></div>
+    <div class="kpi"><div class="label">Progress</div><div class="value num">{{pct .Progress}}</div><div class="note">net worth {{compact .Capital}}</div></div>
+  </div>
+  <div class="track" style="height: 10px; margin-bottom: 14px"><span class="fill" style="display: block; width: {{width (rateWidth .Progress)}}; height: 100%"></span></div>
+  <details class="more" open><summary>How each percent of savings changes it</summary>
+    <div class="scroll"><table class="data" style="margin-top: 8px">
+      <thead><tr><th>Savings rate</th><th class="num">Saved a year</th><th class="num">Target</th><th class="num">Years</th></tr></thead>
+      <tbody>{{$inc := .Income}}{{range .Table}}<tr {{if .Current}}style="background: var(--accent-2)"{{end}}>
+        <td>{{.Rate}}%{{if .Current}} <span class="pill ok">≈ you</span>{{end}}</td>
+        <td class="num">{{compact (pctOf2 $inc .Rate)}}</td><td class="num muted">{{compact (mul25 (pctOf2 $inc (subi 100 .Rate)))}}</td>
+        <td class="num"><b>{{if .Never}}—{{else}}{{.Years}}{{end}}</b></td></tr>{{end}}</tbody>
+    </table></div>
+  </details>
+  <p class="muted tiny" style="margin-bottom: 0">Income and what went out are the last 12 months, as on the Income page; the capital is the net worth above. Saving more both adds to the capital and lowers the target, so years fall fast as the rate grows. A guide, not a plan: returns and prices vary.</p>
+</div>
+{{end}}{{end}}
+
 <div class="grid g2" style="margin-top: 14px">
   <div class="card">
     <div class="card-head"><h3>Owned</h3><span class="num">{{kzt $r.Now.Assets}}</span></div>
