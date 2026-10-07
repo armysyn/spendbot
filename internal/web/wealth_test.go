@@ -31,6 +31,9 @@ func TestWealthPage(t *testing.T) {
 		}
 		return b.req("POST", "/ui/wealth", f).Header().Get("Location")
 	}
+	if empty := b.req("GET", "/ui/wealth", nil).Body.String(); !strings.Contains(empty, "Nothing is known about your money yet") || strings.Contains(empty, "0001") {
+		t.Error("an empty page says what to do, not zeros")
+	}
 	post("action", "add", "name", "Deposit", "kind", "deposit", "liquid", "1", "amount", "1m", "on", "2026-01-15")
 	post("action", "add", "name", "Car loan", "kind", "loan", "liquid", "1", "amount", "400000", "on", "2026-01-15")
 	if loc := post("action", "add", "name", "Future", "kind", "deposit", "amount", "1", "on", "2027-01-01"); !strings.Contains(loc, "not+in+the+future") {

@@ -502,3 +502,11 @@ func TestWealth(t *testing.T) {
 		t.Errorf("points: %d", len(p))
 	}
 }
+
+func TestWealthWithoutData(t *testing.T) {
+	today := time.Date(2026, 10, 8, 0, 0, 0, 0, almaty)
+	rep := BuildWealth(nil, nil, nil, Flow{Income: 100, Out: 50, Months: make([]MonthFlow, 12)}, today)
+	if rep.HasData || rep.HasCushion || !rep.Today.Equal(today) || !rep.Now.Month.Equal(today) {
+		t.Errorf("no data: %+v", rep)
+	}
+}
