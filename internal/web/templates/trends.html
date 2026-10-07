@@ -60,7 +60,7 @@
     {{range $t.Structure}}
     <div class="stack-row">
       <span class="name">{{.Year}}{{if .Partial}} <span class="muted tiny">part</span>{{end}}</span>
-      <span class="stackbar">{{range $i, $p := .Parts}}{{if $p.Value}}<span style="width: {{width $p.Share}}; background: {{index $.Slots $i}}" data-tip="{{$p.Name}} · {{kzt $p.Value}} · {{pct $p.Share}}"></span>{{end}}{{end}}</span>
+      {{$y := .Year}}<span class="stackbar">{{range $i, $p := .Parts}}{{if $p.Value}}{{if eq $p.Name "Other"}}<span style="width: {{width $p.Share}}; background: {{index $.Slots $i}}" data-tip="{{$p.Name}} · {{kzt $p.Value}} · {{pct $p.Share}}"></span>{{else}}<a href="{{link "/ui/operations" "cat" $p.Name "from" (printf "%d-01-01" $y) "to" (printf "%d-12-31" $y)}}" data-panel="{{link "/ui/panel/category" "name" $p.Name "from" (printf "%d-01-01" $y) "to" (printf "%d-12-31" $y)}}" data-panel-title="{{$p.Name}} · {{$y}}" style="width: {{width $p.Share}}; background: {{index $.Slots $i}}" data-tip="{{$p.Name}} · {{kzt $p.Value}} · {{pct $p.Share}} · click for details" aria-label="{{$p.Name}} in {{$y}}"></a>{{end}}{{end}}{{end}}</span>
       <span class="val num">{{compact .Total}}</span>
     </div>
     {{end}}
@@ -80,7 +80,7 @@
     <thead><tr><th>Category</th><th class="num">Before</th><th class="num">Now</th><th class="num">Change</th></tr></thead>
     <tbody>
     {{range $i, $g := $t.Growth}}{{if lt $i 12}}
-    <tr><td>{{if $g.FasterIncome}}<span class="pill up" title="grew faster than income">↑</span> {{end}}<a href="{{link "/ui/operations" "cat" $g.Name "period" "12m"}}">{{$g.Name}}</a> <span class="muted tiny">{{pct $g.Share}}</span></td>
+    <tr><td>{{if $g.FasterIncome}}<span class="pill up" title="grew faster than income">↑</span> {{end}}<a href="{{link "/ui/operations" "cat" $g.Name "period" "12m"}}" data-panel="{{link "/ui/panel/category" "name" $g.Name "period" "12m"}}">{{$g.Name}}</a> <span class="muted tiny">{{pct $g.Share}}</span></td>
       <td class="num muted">{{compact $g.Before}}</td><td class="num">{{compact $g.Now}}</td>
       <td class="num">{{if $g.OK}}{{with chg (cmp $g.Now $g.Before)}}<span class="pill {{.Class}}">{{.Text}}</span>{{end}}{{else if $g.Now}}<span class="pill up">new</span>{{else}}<span class="muted">gone</span>{{end}}</td></tr>
     {{end}}{{end}}

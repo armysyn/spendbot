@@ -53,7 +53,7 @@
     {{if $s.D.Categories}}
     <div class="bars">
       {{range $i, $c := $s.D.Categories}}{{if lt $i 6}}
-      <a class="bar" style="grid-template-columns: minmax(0, 1fr) auto" href="{{link "/ui/operations" "cat" $c.Label "period" $s.Month.Key}}" data-tip="{{$c.Label}} · {{kzt $c.Value}} · {{pct $c.Share}} · {{$c.Sub}}">
+      <a class="bar" style="grid-template-columns: minmax(0, 1fr) auto" href="{{link "/ui/operations" "cat" $c.Label "period" $s.Month.Key}}" data-panel="{{link "/ui/panel/category" "name" $c.Label "from" (ymd $s.Month.From) "to" (lastDay $s.Month.To)}}" data-panel-title="{{$c.Label}}" data-tip="{{$c.Label}} · {{kzt $c.Value}} · {{pct $c.Share}} · {{$c.Sub}}">
         <div><div class="name">{{$c.Label}}</div><div class="track" style="margin-top: 5px"><div class="fill" style="width: {{width $c.Pct}}"></div></div></div>
         <div class="val">{{compact $c.Value}}</div>
       </a>{{end}}{{end}}

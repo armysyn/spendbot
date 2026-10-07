@@ -293,6 +293,20 @@ a.op-title:hover { text-decoration: underline; }
 .dp-sel { font-weight: 600; }
 @media (max-width: 640px) { .dp-pop { position: fixed; left: 12px; right: 12px; top: 70px; width: auto; } .dp-months { justify-content: center; } .dp-month + .dp-month { display: none; } .dp-hint { display: none; } }
 
+/* ---- side panel ---- */
+.drawer-back { position: fixed; inset: 0; background: rgb(0 0 0 / .28); z-index: 40; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); z-index: 41; background: var(--bg);
+  border-left: 1px solid var(--line-2); box-shadow: -12px 0 40px rgb(0 0 0 / .18); display: flex; flex-direction: column; animation: slidein .18s ease-out; }
+@keyframes slidein { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.drawer-head h3 { margin: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-body { padding: 14px 16px 24px; overflow-y: auto; flex: 1; }
+.panel-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; position: sticky; bottom: -24px; background: var(--bg); padding: 10px 0; }
+body.drawer-open { overflow: hidden; }
+[data-panel] { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
+
 /* ---- issues ---- */
 textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 11px; width: 100%; resize: vertical; }
 textarea:focus { outline: 2px solid color-mix(in srgb, var(--series) 40%, transparent); border-color: var(--series); }
@@ -348,7 +362,8 @@ a.issue-row:hover { background: var(--surface-2); }
 .stack-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 64px; gap: 10px; align-items: center; font-size: 14px; }
 .stack-row .val { text-align: right; font-size: 13px; }
 .stackbar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; gap: 2px; background: var(--surface); }
-.stackbar span { display: block; height: 100%; min-width: 2px; }
+.stackbar > * { display: block; height: 100%; min-width: 2px; }
+.stackbar > a:hover, .stackbar > a:focus-visible { filter: brightness(1.12); outline: 2px solid var(--ink); outline-offset: -2px; }
 .col-val.bad { color: var(--bad); } .col-val.good { color: var(--good); }
 
 /* ---- ask in plain words ---- */
@@ -451,6 +466,11 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
 
 {{define "foot"}}</main></div>
 <div id="tip" role="tooltip"></div>
+<div class="drawer-back" id="drawer-back" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head"><h3 id="drawer-title">…</h3><button class="btn ghost sm" type="button" id="drawer-close" aria-label="Close">{{template "icon" "x"}}</button></div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
 <script>
 // Theme: auto → light → dark, remembered in this browser.
 (() => {
@@ -616,6 +636,45 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     document.addEventListener('click', e => { if (!pop.hidden && !e.composedPath().includes(dp)) close(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) close(); });
   });
+})();
+// Side panels: a click on an element with data-panel opens the panel with that fragment;
+// Cmd/Ctrl-click or a middle click still opens the link's page.
+(() => {
+  const drawer = document.getElementById('drawer'), back = document.getElementById('drawer-back');
+  const body = document.getElementById('drawer-body'), title = document.getElementById('drawer-title');
+  let opener = null, seq = 0;
+  const close = () => {
+    drawer.hidden = back.hidden = true; document.body.classList.remove('drawer-open');
+    if (opener) opener.focus();
+  };
+  const open = async (url, el) => {
+    opener = el;
+    drawer.hidden = back.hidden = false; document.body.classList.add('drawer-open');
+    title.textContent = el.dataset.panelTitle || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 60) || '…';
+    body.innerHTML = '<div class="empty small">Loading…</div>';
+    const mine = ++seq;
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (mine !== seq) return;
+      body.innerHTML = await r.text();
+      const inner = body.querySelector('.panel-inner');
+      if (inner && inner.dataset.title) title.textContent = inner.dataset.title;
+    } catch (e) { body.innerHTML = '<div class="empty small">Could not load.</div>'; }
+    document.getElementById('drawer-close').focus();
+  };
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-panel]');
+    if (!el || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    open(el.dataset.panel, el);
+  });
+  document.addEventListener('keydown', e => {
+    const el = e.target.closest && e.target.closest('[data-panel]');
+    if (el && (e.key === 'Enter' || e.key === ' ') && el.tagName !== 'A') { e.preventDefault(); open(el.dataset.panel, el); }
+    if (e.key === 'Escape' && !drawer.hidden) close();
+  });
+  back.addEventListener('click', close);
+  document.getElementById('drawer-close').addEventListener('click', close);
 })();
 // One open edit popover at a time; Escape or a click outside closes it.
 (() => {

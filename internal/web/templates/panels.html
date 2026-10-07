@@ -1,0 +1,37 @@
+{{/* A side panel fragment: what happened with a category, a merchant or on a day. */}}
+{{define "panel"}}
+<div class="panel-inner" data-title="{{.Title}}">
+{{if .Empty}}<div class="empty small">No data yet.</div>{{else}}
+<div class="muted small" style="margin-bottom: 10px">{{if eq .Period.Key "custom"}}{{.Period.Title}}{{else}}{{title .Period.Title}} · {{date .Period.From}} – {{date (.Period.To.AddDate 0 0 -1)}}{{end}}</div>
+<div class="kpis stats" style="grid-template-columns: 1fr 1fr; gap: 10px">
+  <div class="kpi"><div class="label">{{if .Ops}}Spent{{else}}Spent{{end}}{{if .HasPrev}}{{with chg (cmp .Total .PrevTot)}}{{if .Text}}<span class="pill {{.Class}}" data-tip="{{.Title}}">{{.Text}}</span>{{end}}{{end}}{{end}}</div>
+    <div class="value num" style="font-size: 20px">{{kzt .Total}}</div><div class="note">{{if .Share}}{{pct .Share}} of all spending{{end}}{{if .HasPrev}}{{if .Share}} · {{end}}before: {{compact .PrevTot}}{{end}}</div></div>
+  <div class="kpi"><div class="label">Operations</div><div class="value num" style="font-size: 20px">{{.Count}}</div><div class="note">{{if .Avg}}average {{kzt .Avg}}{{end}}</div></div>
+</div>
+{{if gt (len .Trend) 1}}
+<h4 class="panel-h">By {{.Unit}}</h4>
+<div class="spark" style="height: 64px">{{range .Trend}}<span class="sb{{if not .Value}} zero{{end}}" data-tip="{{.Label}} · {{kzt .Value}}"><span style="height: {{width .Pct}}"></span></span>{{end}}</div>
+{{end}}
+{{if .Top}}
+<h4 class="panel-h">Where</h4>
+<div class="bars">{{range .Top}}<div class="bar" style="grid-template-columns: minmax(0, 1fr) 90px auto; margin: 0; padding: 3px 0"><span class="name small">{{.Name}}</span><span class="track"><span class="fill" style="display: block; width: {{width .Share}}"></span></span><span class="val small">{{compact .Total}} <span class="muted">{{pct .Share}}</span></span></div>{{end}}</div>
+{{end}}
+{{if .Cats}}
+<h4 class="panel-h">Categories</h4>
+<div class="bars">{{range .Cats}}{{if .Out}}<div class="bar" style="grid-template-columns: minmax(0, 1fr) 90px auto; margin: 0; padding: 3px 0"><span class="name small">{{.Label}}</span><span class="track"><span class="fill" style="display: block; width: {{width .Share}}"></span></span><span class="val small">{{compact .Out}} <span class="muted">· {{.Count}}</span></span></div>{{end}}{{end}}</div>
+{{end}}
+{{if .Biggest}}
+<h4 class="panel-h">Largest</h4>
+<table class="data"><tbody>{{range .Biggest}}<tr><td>{{.Merchant}}<div class="muted tiny">{{date .At}}</div></td><td class="num">{{kzt (abs .Amount)}}</td></tr>{{end}}</tbody></table>
+{{end}}
+{{if .Ops}}
+<h4 class="panel-h">{{if .Biggest}}Latest{{else}}Operations{{end}}</h4>
+<table class="data"><tbody>{{range .Ops}}<tr><td>{{.Merchant}}<div class="muted tiny">{{date .At}}{{range .Categories}} · {{.}}{{end}}</div></td><td class="num {{if lt .Amount 0}}good{{end}}">{{if lt .Amount 0}}+{{kzt (abs .Amount)}}{{else}}−{{kzt .Amount}}{{end}}</td></tr>{{end}}</tbody></table>
+{{end}}
+{{end}}
+<div class="panel-actions">
+  {{with .Link}}<a class="btn" href="{{.}}">{{template "icon" "ops"}}Open the operations</a>{{end}}
+  {{with .Page}}<a class="btn secondary" href="{{.}}">{{$.PageName}}</a>{{end}}
+</div>
+</div>
+{{end}}
