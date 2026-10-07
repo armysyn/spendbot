@@ -3,7 +3,7 @@
 <div class="op">
   <span class="ava{{if eq $o.MerchantKey "#cash"}} cash{{end}}" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>
   <div class="op-main">
-    {{if $o.MerchantKey}}<a class="op-title" href="{{link "/ui/operations" "m" $o.MerchantKey "type" .Type}}" title="All operations of {{$o.Merchant}}">{{$o.Merchant}}</a>{{else}}<span class="op-title">{{$o.Merchant}}</span>{{end}}
+    {{if $o.MerchantKey}}<a class="op-title" href="{{link "/ui/operations" "m" $o.MerchantKey "type" .Type}}" data-panel="{{link "/ui/panel/merchant" "m" $o.MerchantKey "type" .Type}}" data-panel-title="{{$o.Merchant}}" title="All operations of {{$o.Merchant}}">{{$o.Merchant}}</a>{{else}}<span class="op-title">{{$o.Merchant}}</span>{{end}}
     <div class="op-meta">
       {{if .Date}}<span>{{date $o.At}}</span>{{end}}
       {{if and (ne $o.Source "import") (hasTime $o.At)}}<span>{{hm $o.At}}</span>{{end}}

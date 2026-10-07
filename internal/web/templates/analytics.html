@@ -96,7 +96,7 @@
       {{$months := .Months}}
       {{range $wi, $w := .Weeks}}
         <span class="m">{{range $months}}{{if eq .Col $wi}}{{.Label}}{{end}}{{end}}</span>
-        {{range $w}}{{if .In}}<a class="d l{{.Level}}" href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-tip="{{wday .Date}} {{date .Date}} · {{kzt .Value}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
+        {{range $w}}{{if .In}}<a class="d l{{.Level}}" href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-panel="{{link "/ui/panel/day" "d" (ymd .Date) "nosave" $ns}}" data-tip="{{wday .Date}} {{date .Date}} · {{kzt .Value}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
       {{end}}
     </div>
   </div>
@@ -109,7 +109,7 @@
     <div class="card-head"><h3>Categories</h3>{{if $hp}}<span class="muted tiny">change vs previous period</span>{{end}}</div>
     <div class="bars">
       {{range $d.Categories}}
-      <a class="bar" href="{{link "/ui/operations" "cat" .Label "period" $cur.Key "nosave" $ns}}" data-tip="{{.Label}} · {{kzt .Value}} · {{pct .Share}} of spending · {{.Sub}}">
+      <a class="bar" href="{{link "/ui/operations" "cat" .Label "period" $cur.Key "nosave" $ns}}" data-panel="{{link "/ui/panel/category" "name" .Label "from" (ymd $cur.From) "to" (lastDay $cur.To) "nosave" $ns}}" data-tip="{{.Label}} · {{kzt .Value}} · {{pct .Share}} of spending · {{.Sub}}">
         <span class="name">{{.Label}}</span>
         <span class="track"><span class="fill{{if le .Value 0}} zero{{end}}" style="display: block; width: {{width .Pct}}"></span></span>
         <span class="val">{{compact .Value}}{{if $hp}}{{with chg (cmp .Value (index $.PrevCat .Label))}}{{if .Text}}<span class="pill {{.Class}}">{{.Text}}</span>{{end}}{{else}}{{end}}{{end}}</span>
@@ -157,7 +157,7 @@
     {{range $i, $m := $d.Merchants}}
     <tr>
       <td class="muted">{{inc $i}}</td>
-      <td>{{if $m.Key}}<a href="{{link "/ui/operations" "m" $m.Key "period" $cur.Key "nosave" $ns}}">{{$m.Name}}</a>{{else}}{{$m.Name}}{{end}}</td>
+      <td>{{if $m.Key}}<a href="{{link "/ui/operations" "m" $m.Key "period" $cur.Key "nosave" $ns}}" data-panel="{{link "/ui/panel/merchant" "m" $m.Key "from" (ymd $cur.From) "to" (lastDay $cur.To) "nosave" $ns}}">{{$m.Name}}</a>{{else}}{{$m.Name}}{{end}}</td>
       <td class="hide-narrow"><span class="mini" style="width: {{width $m.Pct}}"></span></td>
       <td class="num">{{kzt $m.Total}}</td><td class="num muted">{{pct $m.Share}}</td><td class="num">{{$m.Count}}</td><td class="num hide-narrow">{{kzt $m.Avg}}</td>
     </tr>
@@ -173,7 +173,7 @@
       <tbody>
       {{range $d.TopDays}}
       <tr>
-        <td><a href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}">{{date .Date}}</a> <span class="muted small">{{wday .Date}}</span><div class="muted tiny">{{.TopMerchant}} · {{kzt .TopAmount}}</div></td>
+        <td><a href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-panel="{{link "/ui/panel/day" "d" (ymd .Date) "nosave" $ns}}">{{date .Date}}</a> <span class="muted small">{{wday .Date}}</span><div class="muted tiny">{{.TopMerchant}} · {{kzt .TopAmount}}</div></td>
         <td style="width: 26%" class="hide-narrow"><span class="mini" style="width: {{width .Pct}}"></span></td>
         <td class="num">{{kzt .Total}}<div class="muted tiny">{{.Count}} ops</div></td>
       </tr>
@@ -187,7 +187,7 @@
       <tbody>
       {{range $d.Biggest}}
       <tr>
-        <td>{{if .Key}}<a href="{{link "/ui/operations" "m" .Key "period" $cur.Key}}">{{.Merchant}}</a>{{else}}{{.Merchant}}{{end}}<div class="muted tiny">{{date .Date}} · {{.Category}}</div></td>
+        <td>{{if .Key}}<a href="{{link "/ui/operations" "m" .Key "period" $cur.Key}}" data-panel="{{link "/ui/panel/merchant" "m" .Key "from" (ymd $cur.From) "to" (lastDay $cur.To)}}">{{.Merchant}}</a>{{else}}{{.Merchant}}{{end}}<div class="muted tiny">{{date .Date}} · {{.Category}}</div></td>
         <td class="num">{{kzt .Amount}}</td>
       </tr>
       {{end}}

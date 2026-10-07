@@ -211,6 +211,7 @@ func (s *Server) Handler() http.Handler {
 		ui.HandleFunc("GET /ui/income", s.income)
 		ui.HandleFunc("GET /ui/trends", s.trends)
 		ui.HandleFunc("GET /ui/wealth", s.wealth)
+		ui.HandleFunc("GET /ui/panel/{kind}", s.panel)
 		ui.HandleFunc("POST /ui/wealth", s.wealthAction)
 		ui.HandleFunc("GET /ui/issues", s.issues)
 		ui.HandleFunc("POST /ui/issues", s.createIssue)

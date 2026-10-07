@@ -65,7 +65,7 @@
   <div class="op cat-row">
     <span class="ava" style="--h: {{hue .Stat.Name}}" aria-hidden="true">{{initial .Stat.Name}}</span>
     <div class="op-main">
-      <a class="op-title" href="{{link "/ui/operations" "cat" .Stat.Name "period" $cur.Key}}">{{.Stat.Name}}</a>
+      <a class="op-title" href="{{link "/ui/operations" "cat" .Stat.Name "period" $cur.Key}}" data-panel="{{link "/ui/panel/category" "name" .Stat.Name "from" (ymd $cur.From) "to" (lastDay $cur.To)}}">{{.Stat.Name}}</a>
       <div class="op-meta">
         {{if .Savings}}<span class="tag save">savings</span>{{end}}{{if .Debt}}<span class="tag none">debt payments</span>{{end}}
         {{if .Stat.Pseudo}}<span class="tag">{{if eq .Stat.Name "Cash"}}cash withdrawals{{else}}needs a category{{end}}</span>{{end}}
