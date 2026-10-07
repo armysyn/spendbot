@@ -42,6 +42,14 @@
   <span class="muted small" style="margin-left: auto">income →</span>
 </a>
 {{end}}
+{{if or $s.HasRate12 $s.HasNet}}
+<div class="card long-view">
+  {{if $s.HasRate12}}<a href="/ui/trends"><span class="muted small">Savings rate, 12 months</span><b class="num {{if lt $s.Rate12 0.0}}net-neg{{else if ge $s.Rate12 10.0}}net-pos{{end}}">{{pct $s.Rate12}}</b></a>{{end}}
+  {{if $s.HasNet}}<a href="/ui/wealth"><span class="muted small">Net worth</span><b class="num">{{compact $s.Net}}</b></a>{{else}}<a href="/ui/wealth#add"><span class="muted small">Net worth</span><b class="small">add your assets →</b></a>{{end}}
+  {{if $s.HasCushion}}<a href="/ui/wealth"><span class="muted small">Cushion</span><b class="num">{{printf "%.1f" $s.Cushion}} <span class="small muted" style="font-weight: 500">months</span></b></a>{{end}}
+  <a href="/ui/trends" class="muted small" style="margin-left: auto; align-self: center">the long view →</a>
+</div>
+{{end}}
 
 <div class="grid g3" style="margin-top: 14px">
   <div class="card">

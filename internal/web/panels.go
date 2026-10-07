@@ -71,7 +71,7 @@ func periodLink(p analytics.Period) []string {
 func (s *Server) panel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return

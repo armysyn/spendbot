@@ -23,9 +23,10 @@
       <form class="edit-pop" method="post" action="/ui/op/{{$o.TxID}}/category">
         <div><b>{{$o.Merchant}}</b> <span class="muted small">· {{date $o.At}} · {{kzt (abs $o.Full)}}</span></div>
         {{$cur := ""}}{{if and $o.Spend (eq (len $o.Categories) 1)}}{{$cur = index $o.Categories 0}}{{end}}
-        <select name="category" aria-label="Category">
+        {{/* only the current choice is in the page; the full list is filled in from #cat-options on open */}}
+        <select name="category" aria-label="Category" data-fill>
           <option value="" disabled {{if and $o.Spend (not $cur)}}selected{{end}}>Choose a category…</option>
-          {{range .Cats}}<option value="{{.ID}}" {{if eq .Name $cur}}selected{{end}}>{{.Name}}</option>{{end}}
+          {{range .Cats}}{{if eq .Name $cur}}<option value="{{.ID}}" selected>{{.Name}}</option>{{end}}{{end}}
           <option value="none" {{if not $o.Spend}}selected{{end}}>Not spending</option>
         </select>
         <input type="text" name="new_category" placeholder="or a new category" maxlength="40" aria-label="New category">
@@ -103,11 +104,12 @@
 {{define "heatgrid"}}{{$ns := .NS}}{{with .H}}
   <div class="heat-wrap">
     <div class="heat-days" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div>
-    <div class="heat" style="grid-template-columns: repeat({{len .Weeks}}, minmax(10px, 20px))">
+    <div class="heat" data-ns="{{$ns}}" style="grid-template-columns: repeat({{len .Weeks}}, minmax(10px, 20px))">
       {{$months := .Months}}
       {{range $wi, $w := .Weeks}}
         <span class="m">{{range $months}}{{if eq .Col $wi}}{{.Label}}{{end}}{{end}}</span>
-        {{range $w}}{{if .In}}<a class="d l{{.Level}}" href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-panel="{{link "/ui/panel/day" "d" (ymd .Date) "nosave" $ns}}" data-tip="{{wday .Date}} {{date .Date}} · {{kzt .Value}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
+        {{/* a day carries its date and amount; the tooltip and the panel are made on hover */}}
+        {{range $w}}{{if .In}}{{$d := ymd .Date}}<a class="d l{{.Level}}" href="/ui/operations?from={{$d}}&amp;to={{$d}}" data-d="{{$d}}" data-v="{{.Value}}" aria-label="{{date .Date}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
       {{end}}
     </div>
   </div>

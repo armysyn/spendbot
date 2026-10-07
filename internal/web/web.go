@@ -60,6 +60,7 @@ type Server struct {
 	handlerOnce sync.Once
 	handler     http.Handler
 	closers     []func()
+	cache       ledgerCache
 	upd         updateState
 }
 
@@ -637,7 +638,7 @@ func (s *Server) ledger(ctx context.Context, data *analyticsData) ([]store.Ledge
 		data.Fallback = true
 	}
 	data.Source = "SQLite"
-	return s.st.Ledger(ctx, s.loc)
+	return s.rows(ctx)
 }
 
 var weekdayShort = map[time.Weekday]string{
@@ -769,7 +770,7 @@ func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
 			d.Cats[c.Name] = c.Category
 		}
 	}
-	rows, err := s.st.Ledger(ctx, s.loc)
+	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -917,4 +918,32 @@ func dayTitle(t, now time.Time) string {
 		return d.Format("Mon, 2 Jan")
 	}
 	return t.Format("Mon, 2 Jan 2006")
+}
+
+// ledgerCache keeps the operations read from the database until the database changes: every
+// page and panel reads them, and reading is most of a page's time.
+type ledgerCache struct {
+	mu      sync.Mutex
+	version string
+	rows    []store.LedgerRow
+}
+
+// rows returns all operations from SQLite, cached until the next write. Callers must not
+// change the rows: they are shared.
+func (s *Server) rows(ctx context.Context) ([]store.LedgerRow, error) {
+	v, err := s.st.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.cache.mu.Lock()
+	defer s.cache.mu.Unlock()
+	if v == s.cache.version && s.cache.rows != nil {
+		return s.cache.rows, nil
+	}
+	rows, err := s.st.Ledger(ctx, s.loc)
+	if err != nil {
+		return nil, err
+	}
+	s.cache.version, s.cache.rows = v, rows
+	return rows, nil
 }
