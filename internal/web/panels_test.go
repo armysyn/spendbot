@@ -40,7 +40,7 @@ func TestPanels(t *testing.T) {
 	if _, b = get("/ui/analytics?period=all"); !strings.Contains(b, `data-panel="/ui/panel/merchant?`) || !strings.Contains(b, `data-panel="/ui/panel/day?`) {
 		t.Error("analytics must open panels")
 	}
-	if _, b = get("/ui"); !strings.Contains(b, `id="drawer"`) {
-		t.Error("the drawer is on every page")
+	if _, b = get("/ui"); !strings.Contains(b, `id="drawer"`) || !strings.Contains(b, ".drawer[hidden]") {
+		t.Error("the drawer is on every page, hidden until opened")
 	}
 }

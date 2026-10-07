@@ -297,6 +297,7 @@ a.op-title:hover { text-decoration: underline; }
 .drawer-back { position: fixed; inset: 0; background: rgb(0 0 0 / .28); z-index: 40; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); z-index: 41; background: var(--bg);
   border-left: 1px solid var(--line-2); box-shadow: -12px 0 40px rgb(0 0 0 / .18); display: flex; flex-direction: column; animation: slidein .18s ease-out; }
+.drawer[hidden], .drawer-back[hidden] { display: none; } /* display: flex would show it anyway */
 @keyframes slidein { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .drawer-head h3 { margin: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
