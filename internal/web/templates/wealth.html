@@ -1,17 +1,23 @@
 {{template "head" .Page}}
 {{$r := .R}}
 <div class="page-head">
-  <div><h1>Net worth</h1><div class="sub">What you own minus what you owe · as of {{date $r.Now.Month}}</div></div>
+  <div><h1>Net worth</h1><div class="sub">What you own minus what you owe · as of {{date $r.Today}}</div></div>
   <div class="actions"><a class="btn sm" href="#add">{{template "icon" "plus"}}Add an asset or a debt</a></div>
 </div>
 {{template "flash" .Flash}}
+{{if not $r.HasData}}
+<div class="flash warn">{{template "icon" "bank"}}<div><b>Nothing is known about your money yet.</b>
+  <a href="#add">Add what you own and owe</a> — a deposit, investments, a flat, a loan — with today's values.
+  The Kaspi Gold balance comes by itself from statements: upload them again on the <a href="/ui#upload">home page</a> (nothing is duplicated) and its history appears here.</div></div>
+{{end}}
 
 <div class="kpis stats">
   <div class="kpi"><div class="label">Net worth {{if $r.HasYearAgo}}{{with chg (cmp $r.Now.Net $r.YearAgo.Net)}}{{if .Text}}<span class="pill {{if eq .Class "up"}}down{{else if eq .Class "down"}}up{{else}}{{.Class}}{{end}}" data-tip="a year ago: {{kzt $r.YearAgo.Net}}">{{.Text}}</span>{{end}}{{end}}{{end}}</div>
-    <div class="value num {{if lt $r.Now.Net 0}}net-neg{{end}}">{{kzt $r.Now.Net}}</div><div class="note">owned {{compact $r.Now.Assets}} − owed {{compact $r.Now.Debts}}</div></div>
+    {{if $r.HasData}}<div class="value num {{if lt $r.Now.Net 0}}net-neg{{end}}">{{kzt $r.Now.Net}}</div><div class="note">owned {{compact $r.Now.Assets}} − owed {{compact $r.Now.Debts}}</div>
+    {{else}}<div class="value muted">—</div><div class="note"><a href="#add">add your assets and debts</a></div>{{end}}</div>
   <div class="kpi"><div class="label">Cushion</div>
     <div class="value num">{{if $r.HasCushion}}{{printf "%.1f" $r.Cushion}} <span class="small muted" style="font-weight: 500">months</span>{{else}}—{{end}}</div>
-    <div class="note">{{if $r.HasCushion}}{{if lt $r.Cushion 3.0}}<span class="bad">below the 3–6 months to aim for</span>{{else if le $r.Cushion 6.0}}<span class="good">within 3–6 months</span>{{else}}<span class="good">over 6 months</span>{{end}} · liquid {{compact $r.Now.Liquid}} / {{compact $r.MonthOut}} a month{{else}}needs what went out over the last months{{end}}</div></div>
+    <div class="note">{{if $r.HasCushion}}{{if lt $r.Cushion 3.0}}<span class="bad">below the 3–6 months to aim for</span>{{else if le $r.Cushion 6.0}}<span class="good">within 3–6 months</span>{{else}}<span class="good">over 6 months</span>{{end}} · liquid {{compact $r.Now.Liquid}} / {{compact $r.MonthOut}} a month{{else if $r.MonthOut}}needs money at hand: a card balance or a deposit marked liquid · {{compact $r.MonthOut}} goes out a month{{else}}needs what went out over the last months{{end}}</div></div>
   <div class="kpi"><div class="label">Debt load</div>
     <div class="value num">{{if $r.HasDebtLoad}}{{pct $r.DebtLoad}}{{else}}—{{end}}</div>
     <div class="note">{{if $r.HasDebtLoad}}{{if ge $r.DebtLoad 40.0}}<span class="bad">over 40%: alarming</span>{{else if ge $r.DebtLoad 30.0}}<span class="bad">over 30%: a warning sign</span>{{else}}<span class="good">under 30%</span>{{end}} · {{compact $r.DebtPaid}} to lenders of {{compact $r.Income12}} income, 12 months{{else}}no income in the last 12 months{{end}}</div></div>
