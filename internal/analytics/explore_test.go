@@ -458,3 +458,55 @@ func TestTrends(t *testing.T) {
 		t.Errorf("first 12-month average: %+v", got)
 	}
 }
+
+func TestWealth(t *testing.T) {
+	d := func(y int, m time.Month, day int) time.Time { return time.Date(y, m, day, 0, 0, 0, 0, almaty) }
+	v := func(t time.Time, a int64) store.HoldingValue { return store.HoldingValue{On: t, Amount: a * tg} }
+	series := []Series{
+		{Name: "Deposit", Kind: "deposit", Liquid: true, Points: []store.HoldingValue{v(d(2025, 1, 1), 1_000_000), v(d(2026, 1, 1), 2_000_000)}},
+		{Name: "Flat", Kind: "property", Points: []store.HoldingValue{v(d(2025, 6, 1), 30_000_000)}},
+		{Name: "Mortgage", Kind: "mortgage", Debt: true, Points: []store.HoldingValue{v(d(2025, 6, 1), 20_000_000), v(d(2026, 6, 1), 18_000_000)}},
+	}
+	series = append(series, CardSeries([]store.CardBalance{{Account: "*1111", On: d(2026, 9, 1), Amount: 100_000 * tg}, {Account: "*1111", On: d(2026, 9, 30), Amount: 300_000 * tg}})...)
+	if s := series[3]; !s.Auto || !s.Liquid || len(s.Points) != 2 {
+		t.Fatalf("card series: %+v", s)
+	}
+	rows := []store.LedgerRow{
+		{At: d(2026, 3, 5), Amount: 150_000 * tg, Currency: "KZT", Kind: kaspi.Transfer, Merchant: "На карту другого банка LOAN PAYMENT", Status: store.StatusInfo},
+		{At: d(2026, 4, 5), Amount: 200_000 * tg, Currency: "KZT", Kind: kaspi.Purchase, Merchant: "BANK", Status: store.StatusDone,
+			Categories: []string{"Mortgage", "Home"}, Splits: []int64{120_000 * tg, 80_000 * tg}},
+		{At: d(2026, 4, 6), Amount: 50_000 * tg, Currency: "KZT", Kind: kaspi.Purchase, Merchant: "MAGNUM", Status: store.StatusDone, Categories: []string{"Groceries"}, Splits: []int64{50_000 * tg}},
+		{At: d(2024, 4, 5), Amount: 99_000 * tg, Currency: "KZT", Kind: kaspi.Transfer, Merchant: "LOAN PAYMENT", Status: store.StatusInfo}, // over a year ago
+	}
+	flow := Flow{Income: 6_000_000 * tg, Out: 2_400_000 * tg, Months: make([]MonthFlow, 12)}
+	rep := BuildWealth(series, rows, []string{"Mortgage"}, flow, d(2026, 10, 8))
+
+	// now: deposit 2M + flat 30M + card 300K − mortgage 18M
+	if rep.Now.Assets != 32_300_000*tg || rep.Now.Debts != 18_000_000*tg || rep.Now.Net != 14_300_000*tg || rep.Now.Liquid != 2_300_000*tg {
+		t.Errorf("now: %+v", rep.Now)
+	}
+	// a year ago (8 Oct 2025): deposit 1M + flat 30M − mortgage 20M
+	if !rep.HasYearAgo || rep.YearAgo.Net != 11_000_000*tg || !rep.Change.OK {
+		t.Errorf("year ago: %+v", rep.YearAgo)
+	}
+	// cushion: 2.3M liquid / 200K a month
+	if !rep.HasCushion || rep.Cushion != 11.5 {
+		t.Errorf("cushion: %v", rep.Cushion)
+	}
+	// debt: the LOAN PAYMENT transfer 150K + the mortgage part 120K, not the old one
+	if rep.DebtPaid != 270_000*tg || rep.DebtLoad != 4.5 || len(rep.Lenders) != 2 {
+		t.Errorf("debt: %d %v %+v", rep.DebtPaid, rep.DebtLoad, rep.Lenders)
+	}
+	// monthly points from the first value to now, the last one partial
+	if p := rep.Points; len(p) != 22 || !p[len(p)-1].Partial || p[0].Month != d(2025, 1, 1) {
+		t.Errorf("points: %d", len(p))
+	}
+}
+
+func TestWealthWithoutData(t *testing.T) {
+	today := time.Date(2026, 10, 8, 0, 0, 0, 0, almaty)
+	rep := BuildWealth(nil, nil, nil, Flow{Income: 100, Out: 50, Months: make([]MonthFlow, 12)}, today)
+	if rep.HasData || rep.HasCushion || !rep.Today.Equal(today) || !rep.Now.Month.Equal(today) {
+		t.Errorf("no data: %+v", rep)
+	}
+}

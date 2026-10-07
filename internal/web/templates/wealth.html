@@ -1,0 +1,128 @@
+{{template "head" .Page}}
+{{$r := .R}}
+<div class="page-head">
+  <div><h1>Net worth</h1><div class="sub">What you own minus what you owe · as of {{date $r.Today}}</div></div>
+  <div class="actions"><a class="btn sm" href="#add">{{template "icon" "plus"}}Add an asset or a debt</a></div>
+</div>
+{{template "flash" .Flash}}
+{{if not $r.HasData}}
+<div class="flash warn">{{template "icon" "bank"}}<div><b>Nothing is known about your money yet.</b>
+  <a href="#add">Add what you own and owe</a> — a deposit, investments, a flat, a loan — with today's values.
+  The Kaspi Gold balance comes by itself from statements: upload them again on the <a href="/ui#upload">home page</a> (nothing is duplicated) and its history appears here.</div></div>
+{{end}}
+
+<div class="kpis stats">
+  <div class="kpi"><div class="label">Net worth {{if $r.HasYearAgo}}{{with chg (cmp $r.Now.Net $r.YearAgo.Net)}}{{if .Text}}<span class="pill {{if eq .Class "up"}}down{{else if eq .Class "down"}}up{{else}}{{.Class}}{{end}}" data-tip="a year ago: {{kzt $r.YearAgo.Net}}">{{.Text}}</span>{{end}}{{end}}{{end}}</div>
+    {{if $r.HasData}}<div class="value num {{if lt $r.Now.Net 0}}net-neg{{end}}">{{kzt $r.Now.Net}}</div><div class="note">owned {{compact $r.Now.Assets}} − owed {{compact $r.Now.Debts}}</div>
+    {{else}}<div class="value muted">—</div><div class="note"><a href="#add">add your assets and debts</a></div>{{end}}</div>
+  <div class="kpi"><div class="label">Cushion</div>
+    <div class="value num">{{if $r.HasCushion}}{{printf "%.1f" $r.Cushion}} <span class="small muted" style="font-weight: 500">months</span>{{else}}—{{end}}</div>
+    <div class="note">{{if $r.HasCushion}}{{if lt $r.Cushion 3.0}}<span class="bad">below the 3–6 months to aim for</span>{{else if le $r.Cushion 6.0}}<span class="good">within 3–6 months</span>{{else}}<span class="good">over 6 months</span>{{end}} · liquid {{compact $r.Now.Liquid}} / {{compact $r.MonthOut}} a month{{else if $r.MonthOut}}needs money at hand: a card balance or a deposit marked liquid · {{compact $r.MonthOut}} goes out a month{{else}}needs what went out over the last months{{end}}</div></div>
+  <div class="kpi"><div class="label">Debt load</div>
+    <div class="value num">{{if $r.HasDebtLoad}}{{pct $r.DebtLoad}}{{else}}—{{end}}</div>
+    <div class="note">{{if $r.HasDebtLoad}}{{if ge $r.DebtLoad 40.0}}<span class="bad">over 40%: alarming</span>{{else if ge $r.DebtLoad 30.0}}<span class="bad">over 30%: a warning sign</span>{{else}}<span class="good">under 30%</span>{{end}} · {{compact $r.DebtPaid}} to lenders of {{compact $r.Income12}} income, 12 months{{else}}no income in the last 12 months{{end}}</div></div>
+</div>
+
+<div class="card" style="margin-top: 14px">
+  <div class="card-head"><h3>Net worth over time</h3>
+    <div class="legend" style="margin: 0"><span><span class="sw" style="background: var(--ink)"></span>Net worth</span><span><span class="sw" style="background: var(--income)"></span>Owned</span><span><span class="sw" style="background: var(--bad)"></span>Owed</span></div></div>
+  {{if $r.Points}}
+  <div class="chart-box">{{.Chart}}</div>
+  <div class="axis" aria-hidden="true">{{range $i, $p := $r.Points}}<span>{{if eq (mod $i (every (len $r.Points))) 0}}{{$p.Month.Format "Jan 06"}}{{end}}</span>{{end}}</div>
+  <p class="muted tiny" style="margin-bottom: 0">At the end of each month every asset and debt counts with its latest value on or before that day. Add a value now and then — every month or quarter — and the line fills in.</p>
+  {{else}}<div class="empty small">{{template "icon" "chart"}}<div>Add what you own and owe below — the chart starts from the first value.</div></div>{{end}}
+</div>
+
+<div class="grid g2" style="margin-top: 14px">
+  <div class="card">
+    <div class="card-head"><h3>Owned</h3><span class="num">{{kzt $r.Now.Assets}}</span></div>
+    <div class="ops" style="box-shadow: none">
+      {{range .Cards}}{{$v := index .Points (subi (len .Points) 1)}}
+      <div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
+        <div class="op-main"><span class="op-title">{{.Name}}</span><div class="op-meta"><span class="tag">from statements</span><span class="tag save">liquid</span><span>as of {{date $v.On}}</span></div></div>
+        <div class="op-amt">{{kzt $v.Amount}}</div>
+      </div>
+      {{end}}
+      {{range .Assets}}{{template "holding" .}}{{end}}
+      {{if and (not .Assets) (not .Cards)}}<div class="empty small">Nothing yet: deposits, investments, a flat, a car.</div>{{end}}
+    </div>
+    {{if not .Cards}}<p class="muted tiny">The Kaspi Gold balance comes by itself from statements uploaded from now on (upload your old ones again to get its history).</p>{{end}}
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Owed</h3><span class="num {{if $r.Now.Debts}}bad{{end}}">{{kzt $r.Now.Debts}}</span></div>
+    <div class="ops" style="box-shadow: none">
+      {{range .Debts}}{{template "holding" .}}{{else}}<div class="empty small">No debts. If you have a loan, a mortgage or a credit card, add what is left to pay.</div>{{end}}
+    </div>
+    <h4 style="margin: 16px 0 6px; font-size: 14px">Paid to lenders, last 12 months</h4>
+    {{if $r.Lenders}}
+    <div class="scroll"><table class="data"><tbody>
+      {{range $r.Lenders}}<tr><td>{{.Name}}</td><td class="num muted">{{.Count}} {{plural .Count "payment" "payments"}}</td><td class="num">{{kzt .Amount}}</td></tr>{{end}}
+    </tbody></table></div>
+    {{else}}<div class="muted small">None found.</div>{{end}}
+    <p class="muted tiny" style="margin-bottom: 0">Lenders are recognised by their names (LOAN, KREDIT, MFO…){{if .DebtCats}} and by the categories {{join .DebtCats ", "}}{{end}}. Mark a category as debt payments on the <a href="/ui/categories">Categories</a> page — a mortgage, instalments.</p>
+  </div>
+</div>
+
+<div class="card" id="add" style="margin-top: 14px">
+  <div class="card-head"><h3>Add an asset or a debt</h3></div>
+  <form method="post" action="/ui/wealth" class="grid g2" style="gap: 10px; align-items: end">
+    <input type="hidden" name="action" value="add">
+    <div class="field"><label for="hn">Name</label><input id="hn" type="text" name="name" maxlength="60" placeholder="e.g. Kaspi Deposit, Flat, Car loan" required></div>
+    <div class="field"><label for="hk">Kind</label><select id="hk" name="kind" onchange="this.form.liquid.checked = this.value === 'cash' || this.value === 'deposit'">
+      <optgroup label="Owned">{{range .AssetKind}}<option value="{{.}}" {{if eq . "deposit"}}selected{{end}}>{{kindTitle .}}</option>{{end}}</optgroup>
+      <optgroup label="Owed">{{range .DebtKind}}<option value="{{.}}">{{kindTitle .}}</option>{{end}}</optgroup></select></div>
+    <div class="field"><label for="ha">Value now, ₸ (for a debt — what is left to pay)</label><input id="ha" type="text" inputmode="decimal" name="amount" placeholder="e.g. 1.5m" required></div>
+    <div class="field"><label for="hd">On</label><input id="hd" type="date" name="on" value="{{.Today}}" max="{{.Today}}" required></div>
+    <label class="check small" style="display: flex; gap: 8px; align-items: center"><input type="checkbox" name="liquid" value="1" checked> Liquid: can be spent within days (counts for the cushion)</label>
+    <div><button class="btn sm">{{template "icon" "plus"}}Add</button></div>
+  </form>
+</div>
+
+{{if .Archived}}
+<h2 class="section">Archived</h2>
+<div class="ops">{{range .Archived}}{{template "holding" .}}{{end}}</div>
+{{end}}
+
+{{define "holding"}}
+<div class="op" style="grid-template-columns: minmax(0, 1fr) auto">
+  <div class="op-main">
+    <span class="op-title">{{.Name}}</span>
+    <div class="op-meta"><span class="tag">{{kindTitle .Kind}}</span>{{if .Liquid}}<span class="tag save">liquid</span>{{end}}{{if .Has}}<span>as of {{date .Latest.On}}</span>{{end}}{{with .Note}}<span>{{.}}</span>{{end}}</div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 4px">
+    <div class="op-amt {{if .Debt}}bad{{end}}">{{if .Has}}{{kzt .Latest.Amount}}{{else}}—{{end}}</div>
+    <details class="edit">
+      <summary class="btn ghost sm" aria-label="Update {{.Name}}" title="Update">{{template "icon" "edit"}}</summary>
+      <div class="edit-pop">
+        <form method="post" action="/ui/wealth" style="display: grid; gap: 8px">
+          <input type="hidden" name="action" value="value"><input type="hidden" name="id" value="{{.ID}}">
+          <div class="grid g2" style="gap: 8px">
+            <div class="field"><label>New value, ₸</label><input type="text" inputmode="decimal" name="amount" required></div>
+            <div class="field"><label>On</label><input type="date" name="on" value="{{today}}" max="{{today}}" required></div>
+          </div>
+          <div><button class="btn sm">Save value</button></div>
+        </form>
+        {{if .Values}}
+        <details class="more"><summary>History · {{len .Values}}</summary>
+          <table class="data" style="margin-top: 6px">{{$h := .}}{{range .Values}}<tr><td>{{date .On}}</td><td class="num">{{kzt .Amount}}</td>
+            <td><form method="post" action="/ui/wealth"><input type="hidden" name="action" value="delete_value"><input type="hidden" name="id" value="{{$h.ID}}"><input type="hidden" name="value" value="{{.ID}}"><button class="btn ghost sm" aria-label="Delete this value">{{template "icon" "x"}}</button></form></td></tr>{{end}}</table>
+        </details>
+        {{end}}
+        <form method="post" action="/ui/wealth" style="display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px">
+          <input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="{{.ID}}">
+          <div class="field"><label>Name</label><input type="text" name="name" value="{{.Name}}" maxlength="60" required></div>
+          <div class="field"><label>Kind</label><select name="kind">{{$k := .Kind}}{{range kinds}}<option value="{{.}}" {{if eq . $k}}selected{{end}}>{{kindTitle .}}</option>{{end}}</select></div>
+          <label class="check small"><input type="checkbox" name="liquid" value="1" {{if .Liquid}}checked{{end}}> Liquid</label>
+          <div class="field"><label>Note</label><input type="text" name="note" value="{{.Note}}" maxlength="200"></div>
+          <div><button class="btn sm secondary">Save</button></div>
+        </form>
+        <div style="display: flex; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px">
+          <form method="post" action="/ui/wealth"><input type="hidden" name="id" value="{{.ID}}">{{if .Archived}}<input type="hidden" name="action" value="restore"><button class="btn sm secondary">Restore</button>{{else}}<input type="hidden" name="action" value="archive"><button class="btn sm secondary" title="Sold or paid off: keep its history">Archive</button>{{end}}</form>
+          <form method="post" action="/ui/wealth"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="delete"><button class="btn sm danger" onclick="return confirm('Delete {{.Name}} and its whole history?')">Delete</button></form>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}

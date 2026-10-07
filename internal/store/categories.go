@@ -13,6 +13,7 @@ type Category struct {
 	Name     string
 	Archived bool
 	Savings  bool // savings: can be excluded from spending on the analytics page
+	Debt     bool // repays debts: counts for the debt load
 }
 
 type Rule struct {
@@ -23,7 +24,7 @@ type Rule struct {
 
 // Categories lists active categories alphabetically.
 func (s *Store) Categories(ctx context.Context) ([]Category, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, name, archived, savings FROM categories WHERE archived = 0 ORDER BY name")
+	rows, err := s.db.QueryContext(ctx, "SELECT id, name, archived, savings, debt FROM categories WHERE archived = 0 ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +32,7 @@ func (s *Store) Categories(ctx context.Context) ([]Category, error) {
 	var out []Category
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings, &c.Debt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -41,8 +42,8 @@ func (s *Store) Categories(ctx context.Context) ([]Category, error) {
 
 func (s *Store) Category(ctx context.Context, id int64) (Category, error) {
 	var c Category
-	err := s.db.QueryRowContext(ctx, "SELECT id, name, archived, savings FROM categories WHERE id = ?", id).
-		Scan(&c.ID, &c.Name, &c.Archived, &c.Savings)
+	err := s.db.QueryRowContext(ctx, "SELECT id, name, archived, savings, debt FROM categories WHERE id = ?", id).
+		Scan(&c.ID, &c.Name, &c.Archived, &c.Savings, &c.Debt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -91,7 +92,7 @@ func (s *Store) ArchiveCategory(ctx context.Context, id int64) error {
 
 // TopCategories returns the n most used active categories since the given time.
 func (s *Store) TopCategories(ctx context.Context, n int, since time.Time) ([]Category, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id, c.name, c.archived, c.savings FROM splits s
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id, c.name, c.archived, c.savings, c.debt FROM splits s
 		JOIN transactions t ON t.id = s.tx_id JOIN categories c ON c.id = s.category_id
 		WHERE c.archived = 0 AND t.occurred_at >= ?
 		GROUP BY c.id ORDER BY COUNT(*) DESC, c.name LIMIT ?`, fmtTime(since), n)
@@ -102,7 +103,7 @@ func (s *Store) TopCategories(ctx context.Context, n int, since time.Time) ([]Ca
 	var out []Category
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings, &c.Debt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

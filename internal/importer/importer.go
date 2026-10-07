@@ -40,7 +40,7 @@ func (r Result) String() string {
 func Import(ctx context.Context, st *store.Store, s statement.Statement, now time.Time) (Result, error) {
 	res := Result{Total: len(s.Ops), Verify: s.Verify()}
 	if err := st.SaveStatement(ctx, store.StatementInfo{Account: s.Account, From: s.From, To: s.To,
-		Summary: s.Summary, Ops: len(s.Ops), ImportedAt: now}); err != nil {
+		Summary: s.Summary, Ops: len(s.Ops), ImportedAt: now, Opening: s.Opening, Closing: s.Closing, HasBalance: s.HasBalance}); err != nil {
 		return res, err
 	}
 	occ := occurrences(s.Ops)
