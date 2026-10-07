@@ -128,6 +128,8 @@ func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, l
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"pctOf2":   func(total int64, pct int) int64 { return total * int64(pct) / 100 },
+		"mul25":    func(v int64) int64 { return v * 25 },
 		"kindTitle": func(k string) string {
 			if t, ok := kindTitles[k]; ok {
 				return t

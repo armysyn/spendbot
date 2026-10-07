@@ -90,16 +90,7 @@
 {{with .Heat}}
 <div class="card">
   <div class="card-head"><h3>Calendar</h3><span class="muted tiny">each square is a day; darker — more spent</span></div>
-  <div class="heat-wrap">
-    <div class="heat-days" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div>
-    <div class="heat" style="grid-template-columns: repeat({{len .Weeks}}, minmax(10px, 20px))">
-      {{$months := .Months}}
-      {{range $wi, $w := .Weeks}}
-        <span class="m">{{range $months}}{{if eq .Col $wi}}{{.Label}}{{end}}{{end}}</span>
-        {{range $w}}{{if .In}}<a class="d l{{.Level}}" href="{{link "/ui/operations" "from" (ymd .Date) "to" (ymd .Date) "nosave" $ns}}" data-panel="{{link "/ui/panel/day" "d" (ymd .Date) "nosave" $ns}}" data-tip="{{wday .Date}} {{date .Date}} · {{kzt .Value}}"></a>{{else}}<span class="d out"></span>{{end}}{{end}}
-      {{end}}
-    </div>
-  </div>
+  {{template "heatgrid" (dict "H" . "NS" $ns)}}
   <div class="legend">less <span class="sw" style="background: var(--heat-0)"></span><span class="sw" style="background: var(--heat-1)"></span><span class="sw" style="background: var(--heat-2)"></span><span class="sw" style="background: var(--heat-3)"></span><span class="sw" style="background: var(--heat-4)"></span> more · shades are quartiles of days with spending</div>
 </div>
 {{end}}

@@ -503,6 +503,35 @@ func TestWealth(t *testing.T) {
 	}
 }
 
+func TestFI(t *testing.T) {
+	// the classic: from zero, saving half the income — about 17 years at 5% real
+	if y := YearsToFI(0, 50, 50*FIMultiple, 0.05); y != 17 {
+		t.Errorf("50%% rate from zero: %d years", y)
+	}
+	if YearsToFI(100, 0, 50, 0.05) != 0 || YearsToFI(0, 0, 100, 0.05) != -1 {
+		t.Error("done and never")
+	}
+	f := BuildFI(12_000_000*tg, 6_000_000*tg, 30_000_000*tg)
+	if f.Target != 150_000_000*tg || f.Rate != 50 || f.Years == 0 || f.Progress != 20 {
+		t.Errorf("fi: %+v", f)
+	}
+	var prev = 1000
+	for _, r := range f.Table {
+		if !r.Never && r.Years > prev {
+			t.Errorf("a higher rate must not take longer: %+v", f.Table)
+		}
+		if !r.Never {
+			prev = r.Years
+		}
+		if r.Current != (r.Rate == 50) {
+			t.Errorf("current row: %+v", r)
+		}
+	}
+	if f := BuildFI(1000, 1200, 0); !f.Never {
+		t.Error("spending more than earning never gets there")
+	}
+}
+
 func TestWealthWithoutData(t *testing.T) {
 	today := time.Date(2026, 10, 8, 0, 0, 0, 0, almaty)
 	rep := BuildWealth(nil, nil, nil, Flow{Income: 100, Out: 50, Months: make([]MonthFlow, 12)}, today)

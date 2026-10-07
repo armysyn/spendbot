@@ -940,23 +940,29 @@ type heatMonth struct {
 // heat lays the period's daily spending out as weeks (columns) of days, Monday first.
 // The shade is the quartile of the day among days with spending.
 func heat(rows []store.LedgerRow, p analytics.Period, exclude []string) *heatmap {
-	days := p.Days()
-	if days < 28 || days > 400 {
+	if days := p.Days(); days < 28 || days > 400 {
 		return nil
 	}
+	byDay := dayTotals(rows, p, exclude)
+	return layoutHeat(byDay, p, p, quartiles(byDay))
+}
+
+// dayTotals is spending per day over a period.
+func dayTotals(rows []store.LedgerRow, p analytics.Period, exclude []string) map[time.Time]int64 {
 	byDay := map[time.Time]int64{}
 	for _, o := range analytics.Operations(rows, analytics.Filter{Period: p, Exclude: exclude}).Ops {
 		d := time.Date(o.At.Year(), o.At.Month(), o.At.Day(), 0, 0, 0, 0, o.At.Location())
 		byDay[d] += o.Amount
 	}
+	return byDay
+}
+
+// quartiles are the shade bounds: days with spending split into four equal groups.
+func quartiles(byDay map[time.Time]int64) [3]int64 {
 	var vals []int64
-	h := &heatmap{}
 	for _, v := range byDay {
 		if v > 0 {
 			vals = append(vals, v)
-		}
-		if v > h.Max {
-			h.Max = v
 		}
 	}
 	sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
@@ -966,14 +972,23 @@ func heat(rows []store.LedgerRow, p analytics.Period, exclude []string) *heatmap
 		}
 		return vals[int(f*float64(len(vals)-1))]
 	}
-	cut := [3]int64{q(.25), q(.5), q(.75)}
-	start := p.From.AddDate(0, 0, -((int(p.From.Weekday()) + 6) % 7))
+	return [3]int64{q(.25), q(.5), q(.75)}
+}
+
+// layoutHeat lays the grid's days out as weeks (columns) of seven, Monday first; only days of
+// the data period p are shaded, the rest of the grid stays blank.
+func layoutHeat(byDay map[time.Time]int64, grid, p analytics.Period, cut [3]int64) *heatmap {
+	h := &heatmap{}
+	start := grid.From.AddDate(0, 0, -((int(grid.From.Weekday()) + 6) % 7))
 	lastMonth := -1
-	for t := start; t.Before(p.To); t = t.AddDate(0, 0, 7) {
+	for t := start; t.Before(grid.To); t = t.AddDate(0, 0, 7) {
 		var wk [7]heatCell
 		for i := range 7 {
 			d := t.AddDate(0, 0, i)
 			c := heatCell{Date: d, Value: byDay[d], In: !d.Before(p.From) && d.Before(p.To)}
+			if c.In && c.Value > h.Max {
+				h.Max = c.Value
+			}
 			if c.In && c.Value > 0 {
 				c.Level = 1
 				for _, x := range cut {
@@ -983,7 +998,7 @@ func heat(rows []store.LedgerRow, p analytics.Period, exclude []string) *heatmap
 				}
 			}
 			wk[i] = c
-			if c.In && int(d.Month()) != lastMonth {
+			if !d.Before(grid.From) && d.Before(grid.To) && int(d.Month()) != lastMonth {
 				lastMonth = int(d.Month())
 				// a label needs room: skip it when the previous one is in the same or the last column
 				if n := len(h.Months); n == 0 || len(h.Weeks)-h.Months[n-1].Col >= 3 {
@@ -994,6 +1009,34 @@ func heat(rows []store.LedgerRow, p analytics.Period, exclude []string) *heatmap
 		h.Weeks = append(h.Weeks, wk)
 	}
 	return h
+}
+
+// yearHeat is one calendar year of the all-time heatmap.
+type yearHeat struct {
+	Year  int
+	Total int64
+	Days  int // days with spending
+	H     *heatmap
+}
+
+// heatYears lays every year out with one scale for all of them, so the years compare.
+func heatYears(rows []store.LedgerRow, p analytics.Period, exclude []string) []yearHeat {
+	byDay := dayTotals(rows, p, exclude)
+	cut := quartiles(byDay)
+	var out []yearHeat
+	loc := p.From.Location()
+	for y := p.To.AddDate(0, 0, -1).Year(); y >= p.From.Year(); y-- {
+		yp := analytics.Period{From: time.Date(y, 1, 1, 0, 0, 0, 0, loc), To: time.Date(y+1, 1, 1, 0, 0, 0, 0, loc)}
+		yh := yearHeat{Year: y, H: layoutHeat(byDay, yp, p, cut)}
+		for d, v := range byDay {
+			if d.Year() == y && v > 0 {
+				yh.Total += v
+				yh.Days++
+			}
+		}
+		out = append(out, yh)
+	}
+	return out
 }
 
 // ---- columns chart ----
