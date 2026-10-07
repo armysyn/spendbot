@@ -1,0 +1,107 @@
+{{template "head" .Page}}
+{{$st := .State}}{{$t := .T}}
+<div class="page-head">
+  <div><h1>Trends</h1><div class="sub">The long view over all your data{{if not .Empty}} · {{len $t.Flow.Months}} months{{end}}</div></div>
+</div>
+{{if .Empty}}
+<div class="card empty">{{template "icon" "chart"}}<div>No data yet — <a href="/ui#upload">upload a statement</a>.</div></div>
+{{else}}
+<div class="toolbar">
+  <a class="switch {{if not .WithSavings}}on{{end}}" role="switch" aria-checked="{{if .WithSavings}}false{{else}}true{{end}}" href="{{swapAt "/ui/trends" $st "withsave" (bool1 (not .WithSavings))}}"
+     data-tip="Money put into savings categories (deposits, investments) is kept, not spent"><span class="knob"></span>Savings are not spending</a>
+  <a class="switch {{if .People}}on{{end}}" role="switch" aria-checked="{{if .People}}true{{else}}false{{end}}" href="{{if .People}}{{swapAt "/ui/trends" $st "people" "0"}}{{else}}{{swapAt "/ui/trends" $st "people" ""}}{{end}}"
+     data-tip="Transfers to people go out too, money from people comes back"><span class="knob"></span>Transfers to people count</a>
+  <span class="muted small">Income and “went out” are counted as on the <a href="/ui/income">Income</a> page.</span>
+</div>
+
+<div class="kpis stats">
+  {{with .Last12Rate}}<div class="kpi"><div class="label">Savings rate, last 12 months</div>
+    <div class="value num {{if lt .Net 0}}net-neg{{else}}net-pos{{end}}">{{if .HasRate}}{{pct .Rate}}{{else}}—{{end}}</div>
+    <div class="note">{{if .HasRate}}{{if lt .Rate 0.0}}spent more than earned{{else if lt .Rate 10.0}}below the healthy 10–20%{{else if lt .Rate 30.0}}healthy: 10–30%{{else}}very good: over 30%{{end}}{{else}}no income in these months{{end}}</div></div>{{end}}
+  <div class="kpi"><div class="label">Income a month</div><div class="value num good">{{kzt $t.Flow.AvgIncome}}</div><div class="note">on average over all months</div></div>
+  <div class="kpi"><div class="label">Went out a month</div><div class="value num">{{kzt $t.Flow.AvgSpend}}</div><div class="note">{{$t.Flow.Deficit}} of {{len $t.Flow.Months}} months in the red</div></div>
+  {{if $t.HasGrowth}}<div class="kpi"><div class="label">Spending, last 12 months</div><div class="value num">{{with chg $t.Last12}}{{if .Text}}<span class="pill {{.Class}}">{{.Text}}</span>{{end}}{{end}}</div><div class="note">against the 12 months before; income {{with chg $t.IncomeGrowth}}{{if .Text}}{{.Text}}{{else}}—{{end}}{{end}}</div></div>{{end}}
+</div>
+
+<div class="card" style="margin-top: 14px">
+  <div class="card-head"><h3>Savings rate by year</h3><span class="muted tiny">(income − went out) / income · 10–20% is healthy, over 30% very good</span></div>
+  <div class="bars">
+    {{range $t.Years}}
+    <div class="bar" style="grid-template-columns: 110px minmax(0, 1fr) 150px" tabindex="0" data-tip="{{.Year}}{{if .Partial}} ({{.Months}} months){{end}} · income {{kzt .Income}} · went out {{kzt .Out}} · {{if lt .Net 0}}in the red {{kzt (abs .Net)}}{{else}}left {{kzt .Net}}{{end}}">
+      <span class="name">{{.Year}}{{if .Partial}} <span class="muted tiny">part</span>{{end}}</span>
+      <span class="track rate-track"><span class="rate-mark" style="left: 10%"></span><span class="rate-mark" style="left: 20%"></span><span class="rate-mark" style="left: 30%"></span>
+        {{if .HasRate}}<span class="fill {{if lt .Rate 0.0}}neg{{end}}" style="display: block; width: {{width (rateWidth .Rate)}}"></span>{{end}}</span>
+      <span class="val">{{if .HasRate}}<span class="pill {{if lt .Rate 0.0}}up{{else if lt .Rate 10.0}}{{else}}down{{end}}">{{pct .Rate}}</span>{{else}}<span class="muted">no income</span>{{end}}</span>
+    </div>
+    {{end}}
+  </div>
+  <div class="legend">Marks at 10%, 20% and 30% of the bar · the bar is the share of income kept; red — more went out than came in</div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Income and what went out</h3>
+    <div class="legend" style="margin: 0"><span><span class="sw" style="background: var(--income)"></span>Income</span><span><span class="sw" style="background: var(--series)"></span>Went out</span><span><span class="sw" style="background: var(--bad-bg); outline: 1px solid var(--bad)"></span>a month in the red</span></div></div>
+  <div class="chart-box">{{.Lines}}</div>
+  <div class="axis" aria-hidden="true">{{range $i, $m := $t.Flow.Months}}<span>{{if eq (mod $i (every (len $t.Flow.Months))) 0}}{{$m.Month.Format "Jan 06"}}{{end}}</span>{{end}}</div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Spending and its 12-month average</h3>
+    <div class="legend" style="margin: 0"><span><span class="sw" style="background: var(--series-2)"></span>Spending a month</span><span><span class="sw" style="background: var(--ink)"></span>12-month average</span></div></div>
+  <div class="chart-box">{{.Rolling}}</div>
+  <div class="axis" aria-hidden="true">{{range $i, $r := $t.Rolling}}<span>{{if eq (mod $i (every (len $t.Rolling))) 0}}{{$r.Month.Format "Jan 06"}}{{end}}</span>{{end}}</div>
+  <p class="muted tiny" style="margin-bottom: 0">The average smooths one-off peaks — a holiday, a repair — and shows the real trend. It starts once 12 full months are in.</p>
+</div>
+
+<div class="grid g2" style="margin-top: 14px">
+<div class="card">
+  <div class="card-head"><h3>Spending structure by year</h3><span class="muted tiny">share of each year's spending</span></div>
+  <div class="stack-rows">
+    {{range $t.Structure}}
+    <div class="stack-row">
+      <span class="name">{{.Year}}{{if .Partial}} <span class="muted tiny">part</span>{{end}}</span>
+      <span class="stackbar">{{range $i, $p := .Parts}}{{if $p.Value}}<span style="width: {{width $p.Share}}; background: {{index $.Slots $i}}" data-tip="{{$p.Name}} · {{kzt $p.Value}} · {{pct $p.Share}}"></span>{{end}}{{end}}</span>
+      <span class="val num">{{compact .Total}}</span>
+    </div>
+    {{end}}
+  </div>
+  <div class="legend">{{range $i, $c := $t.Top}}<span><span class="sw" style="background: {{index $.Slots $i}}"></span>{{$c}}</span>{{end}}<span><span class="sw" style="background: var(--cat-other)"></span>Other</span></div>
+  <details class="more"><summary>Table</summary><div class="scroll"><table class="data">
+    <thead><tr><th>Year</th>{{range $t.Top}}<th class="num">{{.}}</th>{{end}}<th class="num">Other</th><th class="num">Total</th></tr></thead>
+    <tbody>{{range $t.Structure}}<tr><td>{{.Year}}</td>{{range .Parts}}<td class="num">{{compact .Value}} <span class="muted tiny">{{pct .Share}}</span></td>{{end}}<td class="num">{{kzt .Total}}</td></tr>{{end}}</tbody>
+  </table></div></details>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Lifestyle inflation</h3><span class="muted tiny">last 12 months against the 12 before</span></div>
+  {{if $t.HasGrowth}}
+  <p class="small" style="margin-top: 0">Income {{with chg $t.IncomeGrowth}}{{if .Text}}changed <b>{{.Text}}</b>{{else}}—{{end}}{{end}}. Categories that grew faster than income and take over 2% of spending are marked.</p>
+  <div class="scroll"><table class="data">
+    <thead><tr><th>Category</th><th class="num">Before</th><th class="num">Now</th><th class="num">Change</th></tr></thead>
+    <tbody>
+    {{range $i, $g := $t.Growth}}{{if lt $i 12}}
+    <tr><td>{{if $g.FasterIncome}}<span class="pill up" title="grew faster than income">↑</span> {{end}}<a href="{{link "/ui/operations" "cat" $g.Name "period" "12m"}}">{{$g.Name}}</a> <span class="muted tiny">{{pct $g.Share}}</span></td>
+      <td class="num muted">{{compact $g.Before}}</td><td class="num">{{compact $g.Now}}</td>
+      <td class="num">{{if $g.OK}}{{with chg (cmp $g.Now $g.Before)}}<span class="pill {{.Class}}">{{.Text}}</span>{{end}}{{else if $g.Now}}<span class="pill up">new</span>{{else}}<span class="muted">gone</span>{{end}}</td></tr>
+    {{end}}{{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="empty small">Needs two years of data.</div>{{end}}
+</div>
+</div>
+
+<div class="card" style="margin-top: 14px">
+  <div class="card-head"><h3>Seasonality</h3><span class="muted tiny">average spending in each month of the year, over the years that have it in full</span></div>
+  <div class="cols" style="height: 170px" role="img" aria-label="Average spending by month of the year">
+    {{range $t.Seasons}}
+    <div class="col{{if not .Avg}} zero{{end}}" tabindex="0" data-tip="{{.Month}} · on average {{kzt .Avg}} · over {{.Years}} {{plural .Years "year" "years"}} · {{if .Avg}}{{printf "%.0f" .Index}}% of an average month{{end}}">
+      {{if .Avg}}<span class="col-val {{if gt .Index 115.0}}bad{{else if lt .Index 85.0}}good{{end}}">{{printf "%+.0f" (sub100 .Index)}}%</span>{{end}}
+      <div class="col-fill" style="height: calc({{width .Pct}} * 0.8)"></div>
+    </div>
+    {{end}}
+  </div>
+  <div class="axis" aria-hidden="true">{{range $t.Seasons}}<span>{{printf "%.3s" .Month.String}}</span>{{end}}</div>
+  <p class="muted tiny" style="margin-bottom: 0">The figure over each month is how much it differs from an average month ({{kzt $t.AvgMonth}}): plan ahead for the months that regularly cost more.</p>
+</div>
+{{end}}
+{{template "foot" .}}

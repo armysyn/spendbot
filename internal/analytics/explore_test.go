@@ -2,6 +2,7 @@ package analytics_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -364,5 +365,96 @@ func TestRecentPeriods(t *testing.T) {
 	}
 	if IsMonth(byKey["month"]) || !IsMonth(Period{Key: "2026-09"}) {
 		t.Error("IsMonth")
+	}
+}
+
+// Trends add up to the cash flow and to the spending they come from.
+func TestTrends(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	food, _ := st.FindCategory(ctx, "Groceries")
+	home, _ := st.FindCategory(ctx, "Home")
+	k := 0
+	add := func(at time.Time, raw, kind string, amount int64, cat int64) {
+		k++
+		id, _, err := st.InsertTx(ctx, store.Tx{ExternalKey: fmt.Sprint(k), OccurredAt: at, AmountMinor: amount * tg, Currency: "KZT",
+			MerchantRaw: raw, MerchantNorm: merchant.Normalize(raw), Kind: kind, Source: store.SourceImport, Status: store.StatusInfo, CreatedAt: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cat != 0 {
+			st.CloseTx(ctx, id, []store.Split{{CategoryID: cat, AmountMinor: amount * tg}}, false, at)
+		}
+	}
+	// 30 months from mid-2024: salary 100,000 a month; groceries 30,000, home 10,000 rising to 40,000 in the last year
+	start := time.Date(2024, 3, 15, 12, 0, 0, 0, almaty)
+	for i := range 30 {
+		at := start.AddDate(0, i, 0)
+		add(at, kaspi.Salary, kaspi.TopUp, -100_000, 0)
+		add(at.AddDate(0, 0, 1), "MAGNUM", kaspi.Purchase, 30_000, food.ID)
+		h := int64(10_000)
+		if i >= 18 {
+			h = 40_000
+		}
+		add(at.AddDate(0, 0, 2), "IKEA", kaspi.Purchase, h, home.ID)
+	}
+	rows := ledger(t, st)
+	first, last, _ := Bounds(append([]store.LedgerRow(nil), rows...))
+	for _, r := range rows {
+		if r.At.Before(first) {
+			first = time.Date(r.At.Year(), r.At.Month(), r.At.Day(), 0, 0, 0, 0, almaty)
+		}
+	}
+	tr := BuildTrends(rows, FlowFilter{}, first, last)
+
+	var inc, out int64
+	for _, y := range tr.Years {
+		inc += y.Income
+		out += y.Out
+	}
+	if inc != tr.Flow.Income || out != tr.Flow.Out || tr.Flow.Income != 3_000_000*tg {
+		t.Fatalf("years add up to the flow: %d/%d, %d/%d", inc, tr.Flow.Income, out, tr.Flow.Out)
+	}
+	if y := tr.Years[1]; y.Year != 2025 || y.Partial || !y.HasRate || y.Rate != float64(y.Net)*100/float64(y.Income) {
+		t.Errorf("2025: %+v", y)
+	}
+	if !tr.Years[0].Partial || !tr.Years[len(tr.Years)-1].Partial {
+		t.Error("first and last years are partial")
+	}
+	for i, cy := range tr.Structure {
+		var sum int64
+		for _, p := range cy.Parts {
+			sum += p.Value
+		}
+		if sum != cy.Total || cy.Total != tr.Years[i].Out {
+			t.Errorf("structure %d: parts %d, total %d, spent %d", cy.Year, sum, cy.Total, tr.Years[i].Out)
+		}
+	}
+	// home went from 10,000 to 40,000 a month while income stayed: faster than income
+	if !tr.HasGrowth || tr.IncomeGrowth.Pct != 0 {
+		t.Fatalf("growth: %v %+v", tr.HasGrowth, tr.IncomeGrowth)
+	}
+	if g := tr.Growth[0]; g.Name != "Home" || !g.FasterIncome || g.Now != 480_000*tg {
+		t.Errorf("lifestyle inflation: %+v", g)
+	}
+	for _, g := range tr.Growth {
+		if g.Name == "Groceries" && g.FasterIncome {
+			t.Error("groceries did not grow")
+		}
+	}
+	// seasons: every month of the year averaged; the average month is total over full months
+	if len(tr.Seasons) != 12 || tr.AvgMonth == 0 {
+		t.Fatalf("seasons: %+v", tr.Seasons)
+	}
+	// the rolling average starts after 12 full months and equals the mean of the window
+	var got Rolling
+	for _, r := range tr.Rolling {
+		if r.HasAvg {
+			got = r
+			break
+		}
+	}
+	if got.Avg != 40_000*tg {
+		t.Errorf("first 12-month average: %+v", got)
 	}
 }

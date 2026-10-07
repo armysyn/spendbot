@@ -128,6 +128,14 @@ func New(st *store.Store, kick Kicker, minHits int, batchMaxAge time.Duration, l
 		},
 		"purchase": func(k string) bool { return k == kaspi.Purchase },
 		"cols":     cols,
+		"sub100":   func(f float64) float64 { return f - 100 },
+		"rateWidth": func(r float64) float64 {
+			// the bar is the share of income kept, 0–100%; a deficit is drawn by its size, capped
+			if r < 0 {
+				r = -r
+			}
+			return min(r, 100)
+		},
 		"pctOf": func(a, b int64) int64 {
 			if b <= 0 {
 				return 0
@@ -193,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 		ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 		ui.HandleFunc("GET /ui/categories", s.categories)
 		ui.HandleFunc("GET /ui/income", s.income)
+		ui.HandleFunc("GET /ui/trends", s.trends)
 		ui.HandleFunc("GET /ui/issues", s.issues)
 		ui.HandleFunc("POST /ui/issues", s.createIssue)
 		ui.HandleFunc("GET /ui/issues/{id}", s.issue)

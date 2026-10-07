@@ -56,7 +56,7 @@ func TestPagesRender(t *testing.T) {
 		for _, p := range []string{"/ui", "/ui/analytics", "/ui/analytics?period=2026-08", "/ui/analytics?period=30d&nosave=1", "/ui/analytics?period=today", "/ui/analytics?period=week", "/ui/analytics?period=month",
 			"/ui/operations", "/ui/operations?type=all", "/ui/operations?type=transfers", "/ui/operations?cat=Cash&period=all",
 			"/ui/operations?from=2026-08-02&to=2026-08-04&q=magnum", "/ui/operations?m=magnum", "/ui/categories",
-			"/ui/transfers", "/ui/transfers?name=Adam+S."} {
+			"/ui/transfers", "/ui/transfers?name=Adam+S.", "/ui/trends", "/ui/trends?people=0&withsave=1"} {
 			w := do(h, "GET", p, nil, "", true)
 			if w.Code != http.StatusOK || !strings.HasSuffix(strings.TrimSpace(w.Body.String()), "</html>") {
 				t.Errorf("empty=%v %s: %d, cut short:\n%s", empty, p, w.Code, tail(w.Body.String()))
@@ -436,6 +436,16 @@ func TestPickedRange(t *testing.T) {
 	// a reversed or broken range falls back to the default period
 	if b := do(h, "GET", "/ui/analytics?from=2026-08-04&to=2026-08-02", nil, "", true).Body.String(); !strings.Contains(b, "<h1>12 months</h1>") {
 		t.Error("reversed range")
+	}
+}
+
+// Colours of the structure chart reach the page: html/template blanks unsafe CSS values.
+func TestTrendsColours(t *testing.T) {
+	h, st, _ := setup(t)
+	seedOps(t, st)
+	b := do(h, "GET", "/ui/trends", nil, "", true).Body.String()
+	if strings.Contains(b, "ZgotmplZ") || !strings.Contains(b, "background: var(--cat-1)") {
+		t.Error("structure colours are blanked")
 	}
 }
 
