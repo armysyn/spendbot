@@ -13,6 +13,10 @@ type StatementInfo struct {
 	Summary    map[string]int64
 	Ops        int
 	ImportedAt time.Time
+	// Opening and Closing are the card balances at the ends of the period; HasBalance is false
+	// for statements that did not print them or were imported before they were read.
+	Opening, Closing int64
+	HasBalance       bool
 }
 
 // SaveStatement remembers a statement. A statement for the same period may be downloaded later
@@ -22,11 +26,26 @@ func (s *Store) SaveStatement(ctx context.Context, si StatementInfo) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO statements (account, period_from, period_to, summary, ops, imported_at)
-		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(account, period_from, period_to) DO UPDATE SET
-		summary = excluded.summary, ops = excluded.ops, imported_at = excluded.imported_at
+	var open, closing any
+	if si.HasBalance {
+		open, closing = si.Opening, si.Closing
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO statements (account, period_from, period_to, summary, ops, imported_at, opening_minor, closing_minor)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account, period_from, period_to) DO UPDATE SET
+		summary = excluded.summary, ops = excluded.ops, imported_at = excluded.imported_at,
+		opening_minor = COALESCE(excluded.opening_minor, statements.opening_minor),
+		closing_minor = COALESCE(excluded.closing_minor, statements.closing_minor)
 		WHERE excluded.ops >= statements.ops`,
-		si.Account, si.From.Format("2006-01-02"), si.To.Format("2006-01-02"), string(sum), si.Ops, fmtTime(si.ImportedAt))
+		si.Account, si.From.Format("2006-01-02"), si.To.Format("2006-01-02"), string(sum), si.Ops, fmtTime(si.ImportedAt), open, closing)
+	if err != nil {
+		return err
+	}
+	// balances from a statement imported again fill in ones an earlier import did not read
+	if si.HasBalance {
+		_, err = s.db.ExecContext(ctx, `UPDATE statements SET opening_minor = COALESCE(opening_minor, ?), closing_minor = COALESCE(closing_minor, ?)
+			WHERE account = ? AND period_from = ? AND period_to = ?`, si.Opening, si.Closing,
+			si.Account, si.From.Format("2006-01-02"), si.To.Format("2006-01-02"))
+	}
 	return err
 }
 

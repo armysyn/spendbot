@@ -31,10 +31,14 @@ type Op struct {
 
 // Statement is a parsed statement.
 type Statement struct {
-	Account  string // card number, such as *1234
-	Holder   string // the account holder's full name from the cover; empty when not found
-	From, To time.Time
-	Ops      []Op
+	Account string // card number, such as *1234
+	Holder  string // the account holder's full name from the cover; empty when not found
+	// Opening and Closing are the card balances at the start and the end of the period, as the
+	// statement prints them ("available on"); HasBalance is false for a statement without them.
+	Opening, Closing int64
+	HasBalance       bool
+	From, To         time.Time
+	Ops              []Op
 	// Totals from the header summary by Kaspi label (see kaspi.Summaries), in tiyn.
 	Summary map[string]int64
 }
@@ -69,6 +73,7 @@ var (
 	periodRe = regexp.MustCompile(kaspi.PeriodPattern)
 	cardRe   = regexp.MustCompile(`^\*\d{4}$`)
 	holderRe = regexp.MustCompile(kaspi.HolderPattern)
+	balRe    = regexp.MustCompile(kaspi.BalancePattern)
 )
 
 // segment is a continuous piece of text on a page line.
@@ -139,9 +144,17 @@ func parseKaspiLines(lines [][]segment, loc *time.Location) (Statement, error) {
 	var lastY float64 // y of the last operation row; -1 — nothing to continue
 	lastY = -1
 	seqByDay := map[string]int{}
+	balances := map[time.Time]int64{}
 
 	for li, line := range lines {
 		text := joinLine(line)
+		for _, m := range balRe.FindAllStringSubmatch(text, -1) {
+			on, err := time.ParseInLocation("02.01.06", m[1], loc)
+			v, _, perr := money.Parse(m[2])
+			if err == nil && perr == nil {
+				balances[on] = v
+			}
+		}
 		if m := holderRe.FindStringSubmatch(text); m != nil && st.Holder == "" {
 			st.Holder = strings.Join(strings.Fields(m[1]), " ")
 		}
@@ -205,6 +218,12 @@ func parseKaspiLines(lines [][]segment, loc *time.Location) (Statement, error) {
 		if m := foreignRe.FindStringSubmatch(st.Ops[i].Kind); m != nil {
 			st.Ops[i].Kind, st.Ops[i].Foreign = m[1], m[2]
 		}
+	}
+	// balances are matched to the period's ends once both are known
+	o, okO := balances[st.From]
+	c, okC := balances[st.To]
+	if okO && okC {
+		st.Opening, st.Closing, st.HasBalance = o, c, true
 	}
 	return st, nil
 }

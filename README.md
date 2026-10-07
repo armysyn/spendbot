@@ -20,6 +20,12 @@ local model through Ollama. Your data never leaves your computer unless you conn
   text, amount range and direction; sorting by date or amount; grouping by month, week, day,
   weekday, category, merchant or kind with sums; average, median and largest; CSV export; a
   category change for one purchase or all purchases of a merchant.
+- **Net worth** — assets and debts with values on dates (deposits, investments, a flat, a car;
+  loans, a mortgage, credit cards); the Kaspi Gold balance comes by itself from statements. Net
+  worth over time, the cushion in months (liquid assets / what went out in an average month over
+  the last 12, aim for 3–6) and the debt load (paid to lenders / income over the last 12 months,
+  over 30–40% is a warning). Lenders are recognised by name (LOAN, KREDIT, MFO…) and by
+  categories marked as debt payments.
 - **Trends** — the long view: savings rate by year ((income − went out) / income, with the
   10–20% and 30% marks), income against what went out month by month with the months in the red,
   spending and its 12-month rolling average, spending structure by year, lifestyle inflation

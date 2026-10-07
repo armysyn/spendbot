@@ -79,6 +79,10 @@ const (
 // is taken; the IIN (national ID) is never kept.
 const HolderPattern = `подтверждает,?\s+что\s+(.+?),?\s+ИИН`
 
+// BalancePattern finds the card balance on a date: "Доступно на 05.10.26: + 1 234,56 ₸"
+// ("available on"). The statement prints it for the start and the end of its period.
+const BalancePattern = `Доступно на (\d{2}\.\d{2}\.\d{2}):?\s*([+-]\s?[\d\x{00a0} ]+,\d{2}\s?₸)`
+
 // PeriodPattern matches the statement period line, "за период с 05.10.25 по 05.10.26"
 // ("for the period from … to …").
 const PeriodPattern = `за период с (\d{2}\.\d{2}\.\d{2}) по (\d{2}\.\d{2}\.\d{2})`

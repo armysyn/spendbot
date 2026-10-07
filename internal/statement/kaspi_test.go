@@ -33,6 +33,8 @@ func TestParseKaspiLines(t *testing.T) {
 		line(700, 40, "АО «Kaspi Bank» подтверждает, что Иванов  Иван Иванович ИИН 000000000000"),
 		line(654, 40, "по Kaspi Gold за период с 01.01.26 по 31.12.26"),
 		line(600, 300, "*1234"),
+		line(560, 40, "Доступно на 31.12.26: + 2 768,30 ₸ Валюта счета: теңге"),
+		line(540, 40, "Доступно на 01.01.26 + 10 000,00 ₸ Остаток зарплатных денег 0,00 ₸"),
 		line(484, 43, "Покупки", 200, "- 7 182,70 ₸"),
 		line(470, 43, "Переводы", 200, "- 5 000,00 ₸"),
 		header(333),
@@ -53,6 +55,9 @@ func TestParseKaspiLines(t *testing.T) {
 	st, err := parseKaspiLines(lines, almaty)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !st.HasBalance || st.Opening != 1000000 || st.Closing != 276830 {
+		t.Errorf("balances: %+v", st)
 	}
 	if st.Holder != "Иванов Иван Иванович" {
 		t.Errorf("holder: %q", st.Holder)

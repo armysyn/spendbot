@@ -95,7 +95,7 @@ func (s *Store) RecategorizeMerchant(ctx context.Context, norm string, categoryI
 
 // AllCategories lists categories including archived ones, alphabetically.
 func (s *Store) AllCategories(ctx context.Context) ([]Category, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, name, archived, savings FROM categories ORDER BY archived, name")
+	rows, err := s.db.QueryContext(ctx, "SELECT id, name, archived, savings, debt FROM categories ORDER BY archived, name")
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *Store) AllCategories(ctx context.Context) ([]Category, error) {
 	var out []Category
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Archived, &c.Savings, &c.Debt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

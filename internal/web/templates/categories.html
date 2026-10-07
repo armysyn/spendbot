@@ -67,7 +67,7 @@
     <div class="op-main">
       <a class="op-title" href="{{link "/ui/operations" "cat" .Stat.Name "period" $cur.Key}}">{{.Stat.Name}}</a>
       <div class="op-meta">
-        {{if .Savings}}<span class="tag save">savings</span>{{end}}
+        {{if .Savings}}<span class="tag save">savings</span>{{end}}{{if .Debt}}<span class="tag none">debt payments</span>{{end}}
         {{if .Stat.Pseudo}}<span class="tag">{{if eq .Stat.Name "Cash"}}cash withdrawals{{else}}needs a category{{end}}</span>{{end}}
         {{if .Stat.Count}}<span>{{.Stat.Count}} {{plural (int .Stat.Count) "operation" "operations"}} · avg {{kzt .Stat.Avg}}</span>{{else}}<span>no spending</span>{{end}}
         {{if .Rules}}<span>· {{.Rules}} {{plural .Rules "merchant" "merchants"}} remembered</span>{{end}}
@@ -111,6 +111,8 @@
           <div style="display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px">
             <form method="post" action="/ui/categories"><input type="hidden" name="action" value="savings"><input type="hidden" name="id" value="{{.ID}}">
               <button class="btn sm secondary">{{if .Savings}}Not savings{{else}}Mark as savings{{end}}</button></form>
+            <form method="post" action="/ui/categories"><input type="hidden" name="action" value="debt"><input type="hidden" name="id" value="{{.ID}}">
+              <button class="btn sm secondary" title="Loan instalments, a mortgage: counts for the debt load">{{if .Debt}}Not debt payments{{else}}Debt payments{{end}}</button></form>
             <form method="post" action="/ui/categories"><input type="hidden" name="action" value="archive"><input type="hidden" name="id" value="{{.ID}}">
               <button class="btn sm danger" onclick="return confirm('Archive {{.Category.Name}}? It disappears from choices and merchants stop going there automatically; old operations keep it.')">Archive</button></form>
           </div>

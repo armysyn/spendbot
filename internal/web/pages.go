@@ -878,6 +878,13 @@ func (s *Server) categoryAction(w http.ResponseWriter, r *http.Request) {
 	case "restore":
 		err = s.st.RestoreCategory(ctx, c.ID)
 		msg = "\"" + c.Name + "\" restored."
+	case "debt":
+		err = s.st.SetDebtCategory(ctx, c.ID, !c.Debt)
+		if c.Debt {
+			msg = "\"" + c.Name + "\" no longer counts as debt payments."
+		} else {
+			msg = "\"" + c.Name + "\" counts as debt payments for the debt load on the Net worth page."
+		}
 	case "savings":
 		var ids []int64
 		cats, cerr := s.st.AllCategories(ctx)
