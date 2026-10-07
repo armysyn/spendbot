@@ -20,6 +20,11 @@ local model through Ollama. Your data never leaves your computer unless you conn
   text, amount range and direction; sorting by date or amount; grouping by month, week, day,
   weekday, category, merchant or kind with sums; average, median and largest; CSV export; a
   category change for one purchase or all purchases of a merchant.
+- **Trends** — the long view: savings rate by year ((income − went out) / income, with the
+  10–20% and 30% marks), income against what went out month by month with the months in the red,
+  spending and its 12-month rolling average, spending structure by year, lifestyle inflation
+  (categories growing faster than income, last 12 months against the 12 before) and seasonality
+  (each month of the year against an average month).
 - **Income** — salaries stated over the years (current and past, per employer); salary arrivals
   found by themselves, since Kaspi marks them "Зарплата"; other income sources picked from regular
   top-ups; month by month: income, spending, money to and from people, what was left or the
