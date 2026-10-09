@@ -10,7 +10,7 @@
       {{if $o.Kind}}{{if not (purchase $o.Kind)}}<span class="tag">{{kind $o.Kind}}</span>{{end}}{{else if eq $o.Source "wallet"}}<span class="tag">Apple Wallet</span>{{else if eq $o.Source "manual"}}<span class="tag">manual</span>{{end}}
       {{if $o.Spend}}
         {{range $o.Categories}}<a class="tag" href="{{link "/ui/operations" "cat" .}}">{{.}}</a>{{else}}{{if ne $o.MerchantKey "#cash"}}<span class="tag none">no category</span>{{end}}{{end}}
-      {{else if eq $o.Status "ignored"}}<span class="tag">skipped</span>{{end}}
+      {{else if eq $o.Status "ignored"}}<span class="tag">skipped</span>{{else if $o.PassThrough}}<span class="tag" data-tip="Money put on the card shortly before covered it: not spending">passed through</span>{{end}}
     </div>
   </div>
   <div class="op-amt-wrap" style="display: flex; align-items: center; gap: 4px">
@@ -149,3 +149,6 @@
 })();
 </script>
 {{end}}
+
+{{/* passnote: cash that only passed through the card and is left out; dict Sum N Period */}}
+{{define "passnote"}}{{if .Sum}}<p class="muted small">{{template "icon" "wallet"}} {{compact .Sum}} in {{.N}} cash {{plural .N "withdrawal" "withdrawals"}} only passed through the card — money put on it from another bank, at an ATM or by people and taken out as cash within a week — and {{plural .N "is" "are"}} not counted as spending. <a href="{{link "/ui/operations" "type" "all" "m" "#cash" "from" (ymd .Period.From) "to" (lastDay .Period.To)}}">Review</a></p>{{end}}{{end}}

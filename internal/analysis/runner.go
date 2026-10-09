@@ -54,6 +54,14 @@ func New(st *store.Store, ch *clickhouse.Client, cls *classify.Classifier, provi
 // ledger returns operations for insights: from ClickHouse when configured and reachable,
 // otherwise from SQLite. The computation is the same, the source does not change the numbers.
 func (a *Analyzer) ledger(ctx context.Context) ([]store.LedgerRow, error) {
+	rows, err := a.rawLedger(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return MarkPassThrough(ctx, a.st, rows)
+}
+
+func (a *Analyzer) rawLedger(ctx context.Context) ([]store.LedgerRow, error) {
 	if a.ch != nil {
 		rows, err := LedgerFromClickHouse(ctx, a.ch, a.opts.Location)
 		if err == nil {

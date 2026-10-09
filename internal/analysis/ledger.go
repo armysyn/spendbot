@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"spendbot/internal/analytics"
 	"spendbot/internal/clickhouse"
 	"spendbot/internal/store"
 )
@@ -39,4 +40,23 @@ func LedgerFromClickHouse(ctx context.Context, ch *clickhouse.Client, loc *time.
 		}
 	}
 	return out, nil
+}
+
+// MarkPassThrough leaves out of spending the cash that only passed through the card, unless
+// the person turned that off; every reader of the ledger calls it, so pages and insights
+// count the same.
+func MarkPassThrough(ctx context.Context, st *store.Store, rows []store.LedgerRow) ([]store.LedgerRow, error) {
+	on, err := st.PassThroughCash(ctx)
+	if err != nil || !on {
+		return rows, err
+	}
+	names, err := st.IncomeSources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sources := map[string]bool{}
+	for _, n := range names {
+		sources[n] = true
+	}
+	return analytics.MarkPassThrough(rows, sources), nil
 }

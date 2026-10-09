@@ -110,6 +110,8 @@ type Flow struct {
 	Deficit   int     // months that ended in the red
 	Basis     string
 	People    bool
+	Passed    int64 // cash that only passed through the card, left out of Out
+	PassedN   int   // withdrawals of it
 }
 
 // DeclaredFor sums the stated salaries covering a month ('YYYY-MM'); an open end runs on.
@@ -138,6 +140,7 @@ func CurrentSalary(ps []store.SalaryPeriod, month string) (amount int64, current
 // CashFlow adds up income and spending by month.
 func CashFlow(all []store.LedgerRow, f FlowFilter) Flow {
 	fl := Flow{Basis: f.Basis, People: f.People}
+	fl.Passed, fl.PassedN = PassedThrough(all, f.Period)
 	if fl.Basis != BasisDeclared && fl.Basis != BasisCard {
 		fl.Basis = BasisAuto
 	}
@@ -173,7 +176,7 @@ func CashFlow(all []store.LedgerRow, f FlowFilter) Flow {
 		case r.Kind == kaspi.TopUp && r.Amount < 0 && f.Sources[r.Merchant]:
 			m.Other -= r.Amount
 		case r.Kind == kaspi.TopUp && r.Amount < 0 && IsPerson(r.Merchant):
-			m.PeopleIn -= r.Amount
+			m.PeopleIn -= r.Amount + r.PassThrough // what left as cash is neither spending nor theirs to repay
 		case r.Kind == kaspi.Transfer && r.Status != store.StatusDone && IsPerson(r.Merchant):
 			m.PeopleOut += r.Amount
 		}

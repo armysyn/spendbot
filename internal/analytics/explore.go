@@ -196,6 +196,7 @@ type Op struct {
 	Full        int64 // the whole operation
 	Categories  []string
 	Spend       bool
+	PassThrough bool // cash that only passed through the card
 }
 
 // Editable reports whether the category of the operation can be changed: purchases, cash
@@ -278,7 +279,7 @@ func Operations(all []store.LedgerRow, f Filter) Ops {
 		}
 		o := Op{TxID: r.TxID, At: r.At, Merchant: merchantName(r), MerchantKey: merchantKey(r), Kind: r.Kind,
 			Status: r.Status, Source: r.Source, Amount: amount, Full: r.Amount, Categories: r.Categories,
-			Spend: spend || IsSpend(r)}
+			Spend: spend || IsSpend(r), PassThrough: r.PassThrough > 0 && r.Kind == cash}
 		if len(terms) > 0 && !matches(o, terms) {
 			continue
 		}

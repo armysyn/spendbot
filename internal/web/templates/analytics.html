@@ -64,7 +64,8 @@
   </div>
 </div>
 <div class="refs">
-  <span>Cash <b class="num">{{kzt $t.Cash}}</b> · {{$t.CashCount}} {{plural (int $t.CashCount) "withdrawal" "withdrawals"}}</span>
+  <span>Cash <b class="num">{{kzt $t.Cash}}</b> · <a href="{{link "/ui/operations" "m" "#cash" "from" (ymd .Current.From) "to" (lastDay .Current.To)}}">{{$t.CashCount}} {{plural (int $t.CashCount) "withdrawal" "withdrawals"}}</a></span>
+  {{if .Passed}}<span data-tip="Put on the card and taken out as cash within a week — not counted as spending">Passed through <b class="num">{{kzt .Passed}}</b> · <a href="{{link "/ui/operations" "type" "all" "m" "#cash" "from" (ymd .Current.From) "to" (lastDay .Current.To)}}">{{.PassedN}} {{plural .PassedN "withdrawal" "withdrawals"}}</a></span>{{end}}
   <span>Uncategorized <b class="num">{{kzt $t.Uncategorized}}</b>{{if $t.Uncategorized}} · <a href="{{link "/ui/operations" "cat" "Uncategorized" "period" .Current.Key}}">review</a>{{end}}</span>
   {{if $t.TransferSpend}}<span>Transfers as spending <b class="num">{{kzt $t.TransferSpend}}</b> · <a href="/ui/transfers">who</a></span>{{end}}
   <span data-tip="Transfers to people without a category — not counted as spending">Transfers to people <b class="num">{{kzt $t.TransfersOut}}</b></span>

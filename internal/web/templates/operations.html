@@ -85,6 +85,35 @@
   <div class="kpi"><div class="label">Largest</div><div class="value num">{{kzt .Stats.Largest}}</div><div class="note">smallest {{kzt .Stats.Smallest}}</div></div>
   {{end}}
 </div>
+{{with .Cash}}
+<div class="card" id="cash" style="margin-top: 14px">
+  <div class="card-head"><h3>Cash that only passed through</h3>
+    <form method="post" action="/ui/cash" style="margin: 0">
+      <input type="hidden" name="action" value="passthrough"><input type="hidden" name="on" value="{{if .On}}0{{else}}1{{end}}"><input type="hidden" name="back" value="{{$.Back}}">
+      <button class="switch {{if .On}}on{{end}}" role="switch" aria-checked="{{if .On}}true{{else}}false{{end}}" style="background: none; border: 0; padding: 0; cursor: pointer"
+        data-tip="Money put on the card and taken out as cash within a week is not spending"><span class="knob"></span>Leave it out</button>
+    </form>
+  </div>
+  <p class="small" style="margin-top: 0">{{if not .On}}Every cash withdrawal counts as spending.{{else if .PassedN}}<b>{{kzt .Passed}}</b> in {{.PassedN}} {{plural .PassedN "withdrawal" "withdrawals"}} {{plural .PassedN "is" "are"}} not counted as spending: money was put on the card — from another bank, at an ATM or terminal, or by a person — and taken out as cash within a week. They are under <a href="{{swap $st "type" "all" "cat" "" "m" "#cash"}}">All operations</a>, marked “passed through”.{{else}}No cash passed through the card in this period: every withdrawal here was paid from the card’s own money.{{end}}</p>
+  {{if or .Counted .Skipped}}
+  <div class="toolbar" style="margin: 0">
+    {{if .Counted}}
+    <form method="post" action="/ui/cash" style="margin: 0">
+      <input type="hidden" name="action" value="skip"><input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}"><input type="hidden" name="back" value="{{$.Back}}">
+      <button class="btn secondary sm">Skip {{if gt .Counted 1}}all {{.Counted}} cash withdrawals{{else}}the cash withdrawal{{end}} of this period</button>
+    </form>
+    {{end}}
+    {{if .Skipped}}
+    <form method="post" action="/ui/cash" style="margin: 0">
+      <input type="hidden" name="action" value="count"><input type="hidden" name="from" value="{{.From}}"><input type="hidden" name="to" value="{{.To}}"><input type="hidden" name="back" value="{{$.Back}}">
+      <button class="btn secondary sm">Count {{.Skipped}} skipped again</button>
+    </form>
+    {{end}}
+  </div>
+  <p class="muted tiny" style="margin-bottom: 0">Cashed out money that was not yours to spend, or put it into another account? Skip the period’s withdrawals by hand — withdrawals you gave a category stay as they are, and it can be undone here.</p>
+  {{end}}
+</div>
+{{end}}
 {{if and .NoSavings (eq .Type "spend")}}<p class="muted small">Savings categories are left out, as on the analytics page with the switch on.</p>{{end}}
 
 {{if .Groups}}
