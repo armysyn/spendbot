@@ -403,7 +403,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	log.Info("http listening", "addr", cfg.Addr, "url", page)
 	if cfg.OpenBrowser {
 		fmt.Fprintf(os.Stderr, "\nspendbot %s is running: %s\nKeep this window open while you use the program.\n\n", version, page)
-		openBrowser(page, log)
+		if os.Getenv("SPENDBOT_RESTARTED") != "1" { // after an update the page is open already and reloads itself
+			openBrowser(page, log)
+		}
 	}
 
 	select {
@@ -418,8 +420,28 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if serr := srv.Shutdown(shutdownCtx); serr != nil {
 		log.Warn("http shutdown", "err", serr)
 	}
+	// Background work stops with ctx. After an update the new program must start even if
+	// something is stuck (a long model answer, a slow network call): wait a while, not forever.
+	if restartRequested.Load() {
+		if !waitTimeout(&wg, 20*time.Second) {
+			log.Warn("restart: background work did not stop in time, restarting anyway")
+		}
+		return err
+	}
 	wg.Wait()
 	return err
+}
+
+// waitTimeout waits for wg at most d and reports whether it finished.
+func waitTimeout(wg *sync.WaitGroup, d time.Duration) bool {
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
+	}
 }
 
 // generatedToken is the ingest token generated once and stored in the database.

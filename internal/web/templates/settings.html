@@ -92,7 +92,17 @@
   const box = document.getElementById('update-progress');
   if (!box || box.hidden) return;
   const text = document.getElementById('update-text');
-  const waitForNew = () => fetch('/healthz', { cache: 'no-store' }).then(r => r.ok ? location.reload() : setTimeout(waitForNew, 1500)).catch(() => setTimeout(waitForNew, 1500));
+  // the new program answers within seconds; if it does not, say how to start it by hand
+  let deadline = 0;
+  const waitForNew = () => {
+    deadline = deadline || Date.now() + 90000;
+    if (Date.now() > deadline) {
+      box.classList.add('bad');
+      text.textContent = 'The new version is installed, but spendbot did not start again by itself. Start it as usual — start.bat on Windows, start.command on a Mac — and reload this page.';
+      return;
+    }
+    fetch('/healthz', { cache: 'no-store' }).then(r => r.ok ? location.reload() : setTimeout(waitForNew, 1500)).catch(() => setTimeout(waitForNew, 1500));
+  };
   const tick = async () => {
     try {
       const s = await (await fetch('/ui/settings/update/progress', { cache: 'no-store' })).json();

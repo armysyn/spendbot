@@ -5,18 +5,24 @@ package main
 import (
 	"os"
 	"os/exec"
+	"syscall"
 )
 
-// reexec starts the program now on disk (just updated) in this console and lets this process
-// end; the new one waits for the port to be free (SPENDBOT_RESTARTED).
+// createNewConsole is CREATE_NEW_CONSOLE: the process gets a console window of its own.
+const createNewConsole = 0x00000010
+
+// reexec starts the program now on disk (just updated) and lets this process end; the new one
+// waits for the port to be free (SPENDBOT_RESTARTED). It gets a console window of its own:
+// sharing this one, it died with it — start.bat ends when this process does, and Windows
+// Terminal then closes the window and every process in it.
 func reexec() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Env = append(os.Environ(), "SPENDBOT_RESTARTED=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
