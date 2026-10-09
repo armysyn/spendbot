@@ -1,0 +1,98 @@
+{{template "head" .Page}}
+<div class="page-head">
+  <div><h1>{{if .Results}}Statements imported{{else}}Statements to import{{end}}</h1>
+    <div class="sub">{{if .Results}}{{len .Results}} {{plural (len .Results) "statement" "statements"}} imported, oldest first{{else}}Collected here until you press Import · nothing is imported yet{{end}}</div></div>
+  <div class="actions"><a class="btn ghost sm" href="/ui">{{template "icon" "left"}}Home</a></div>
+</div>
+{{template "flash" .Flash}}
+
+{{if .Results}}
+{{$sum := 0}}
+<div class="ops" style="margin-bottom: 14px">
+  {{range .Results}}
+  <div class="op" style="grid-template-columns: 36px minmax(0, 1fr) auto">
+    <span class="ava issue-ic {{if .Err}}bug{{else}}done{{end}}" aria-hidden="true">{{if .Err}}{{template "icon" "x"}}{{else}}{{template "icon" "check"}}{{end}}</span>
+    <div class="op-main"><span class="op-title">{{.Name}}</span>
+      <div class="op-meta">{{if .Err}}<span class="bad">{{.Err}}</span>{{else}}<span>{{date .From}} – {{date .To}}</span>
+        <span>· {{.Result.Total}} operations</span><span>· new: {{add .Result.Auto .Result.Review}} purchases, {{.Result.Info}} other</span>
+        <span>· already there: {{add .Result.Duplicates .Result.Matched}}</span>{{if .Result.Verify}}<span class="tag none">totals differ</span>{{end}}{{end}}</div></div>
+    <span class="muted small">{{if not .Err}}{{if .Result.Review}}{{.Result.Review}} need a category{{end}}{{end}}</span>
+  </div>
+  {{end}}
+</div>
+<p class="muted small">The analysis runs in the background: questions about new merchants and insights appear on the home page.</p>
+<div class="actions"><a class="btn" href="/ui">Home</a><a class="btn secondary" href="/ui/operations?type=all">See the operations</a></div>
+{{end}}
+
+{{with .NewFor}}
+<form class="card" id="new-account" method="post" action="/ui/import/new-account" style="display: grid; gap: 10px; margin-bottom: 14px">
+  <div class="card-head" style="margin-bottom: 0"><h3>A new account for {{.Holder}}</h3><a class="link" href="/ui/import/staged">cancel</a></div>
+  <p class="muted small" style="margin: 0">{{.Name}} · {{date .From}} – {{date .To}} goes there, and this browser signs in to the new account. Sign out to come back.</p>
+  <input type="hidden" name="staged" value="{{.ID}}">
+  <div class="field"><label for="na">Name</label><input id="na" type="text" name="name" value="{{.Holder}}" maxlength="40" required></div>
+  <div class="grid g2" style="gap: 10px">
+    <div class="field"><label for="np">Their password</label><input id="np" type="password" name="password" minlength="8" autocomplete="new-password" required autofocus></div>
+    <div class="field"><label for="nr">Repeat it</label><input id="nr" type="password" name="repeat" minlength="8" autocomplete="new-password" required></div>
+  </div>
+  <div><button class="btn">{{template "icon" "plus"}}Create account and import</button></div>
+</form>
+{{end}}
+{{if .Files}}
+{{if .Results}}<h2 class="section">Still waiting</h2>{{end}}
+<form method="post" action="/ui/import/staged" id="staged-form">
+  <input type="hidden" name="action" value="import">
+  <div class="ops">
+    {{range .Files}}
+    <label class="op staged-row" style="grid-template-columns: 28px minmax(0, 1fr) auto; cursor: pointer">
+      <input type="checkbox" name="id" value="{{.ID}}" {{if and (not .ParseErr) (not .Other) (not .Known)}}checked{{end}} {{if .ParseErr}}disabled{{end}} aria-label="Import {{.Name}}">
+      <div class="op-main">
+        <span class="op-title">{{.Name}}</span>
+        <div class="op-meta">
+          {{if .ParseErr}}<span class="bad">not a readable Kaspi Gold statement: {{.ParseErr}}</span>
+          {{else}}
+          <span>{{.Account}}</span><span>· {{date .From}} – {{date .To}}</span><span>· {{.Ops}} operations</span>
+          {{if .Verify}}<span class="tag none" data-tip="{{.Verify}}">totals differ</span>{{else}}<span class="tag save">totals match</span>{{end}}
+          {{if .Known}}<span class="tag" data-tip="A statement for this card and period is imported already: importing again adds only what is new">already imported</span>{{end}}
+          {{if .Other}}<span class="tag none">another person: {{.Holder}}</span>{{end}}
+          {{end}}
+        </div>
+      </div>
+      <span class="actions" style="gap: 4px">
+        {{if and .Other $.CanCreate}}<a class="btn sm secondary" href="/ui/import/staged?new={{.ID}}#new-account" title="Create an account for {{.Holder}} and import there">To a new account</a>{{end}}
+        <button class="btn ghost sm" form="rm-{{.ID}}" aria-label="Remove {{.Name}}" title="Remove from the list">{{template "icon" "x"}}</button>
+      </span>
+    </label>
+    {{end}}
+  </div>
+  <div class="staged-bar">
+    <button class="btn big" {{if not .Ready}}disabled{{end}}>{{template "icon" "upload"}}Import <span id="staged-n">the ticked</span></button>
+    <span class="muted small">Oldest first; statements already imported add only what is new. Unticked ones stay in the list.</span>
+  </div>
+</form>
+{{range .Files}}
+<form id="rm-{{.ID}}" method="post" action="/ui/import/staged" hidden><input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{.ID}}"></form>
+{{end}}
+<form method="post" action="/ui/import/staged" style="margin-top: 8px" onsubmit="return confirm('Remove every statement from the list?')"><input type="hidden" name="action" value="clear"><button class="btn ghost sm">Clear the list</button></form>
+{{else if not .Results}}
+<div class="card empty">{{template "icon" "upload"}}<div>No statements waiting.</div></div>
+{{end}}
+
+<h2 class="section">Add statements</h2>
+{{template "uploader" .}}
+
+<script>
+(() => {
+  const form = document.getElementById('staged-form');
+  if (!form) return;
+  const n = document.getElementById('staged-n');
+  const paint = () => {
+    const k = form.querySelectorAll('input[name=id]:checked').length;
+    n.textContent = k + (k === 1 ? ' statement' : ' statements');
+    form.querySelector('.staged-bar .btn').disabled = k === 0;
+  };
+  form.addEventListener('change', paint);
+  paint();
+  form.addEventListener('submit', () => { const b = form.querySelector('.staged-bar .btn'); b.disabled = true; n.textContent += '…'; });
+})();
+</script>
+{{template "foot" .}}

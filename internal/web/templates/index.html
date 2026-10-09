@@ -102,35 +102,6 @@
 {{end}}
 
 <h2 class="section" id="upload">Upload a statement</h2>
-<form id="upload-form" class="drop" method="post" action="/ui/import" enctype="multipart/form-data">
-  <span class="ic">{{template "icon" "upload"}}</span>
-  <div style="flex: 1; min-width: 220px">
-    <b>Kaspi Gold PDF statement</b>
-    <div class="muted small">Kaspi.kz → My Bank → Kaspi Gold → Statement, up to one year. Uploading the same period again duplicates nothing.</div>
-    <div id="upload-status" class="muted small" style="margin-top: 4px">The upload starts as soon as you pick a file<span class="desktop-only"> — or drop it here</span>.</div>
-  </div>
-  <label class="btn big" for="pdf">Choose PDF</label>
-  <input id="pdf" class="hidden-input" type="file" name="pdf" accept=".pdf,application/pdf">
-  <noscript><button class="btn">Upload</button></noscript>
-</form>
-<script>
-(() => {
-  const form = document.getElementById('upload-form');
-  const input = document.getElementById('pdf');
-  const status = document.getElementById('upload-status');
-  input.addEventListener('change', () => {
-    if (!input.files.length) return;
-    status.textContent = 'Uploading ' + input.files[0].name + '…';
-    form.classList.add('busy');
-    form.submit();
-  });
-  for (const ev of ['dragenter', 'dragover']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.add('over'); });
-  for (const ev of ['dragleave', 'drop']) form.addEventListener(ev, e => { e.preventDefault(); form.classList.remove('over'); });
-  form.addEventListener('drop', e => {
-    if (!e.dataTransfer.files.length) return;
-    input.files = e.dataTransfer.files;
-    input.dispatchEvent(new Event('change'));
-  });
-})();
-</script>
+{{if .Staged}}<a class="flash" href="/ui/import/staged" style="text-decoration: none">{{template "icon" "upload"}}<div><b>{{.Staged}} {{plural .Staged "statement waits" "statements wait"}} to be imported.</b> Check and import them →</div></a>{{end}}
+{{template "uploader" .}}
 {{template "foot" .}}

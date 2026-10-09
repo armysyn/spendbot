@@ -8,6 +8,8 @@ local model through Ollama. Your data never leaves your computer unless you conn
 
 - **Kaspi Gold PDF statements** — parsed by text coordinates and reconciled with the statement
   header totals to the tiyn; re-importing or overlapping statements never duplicates operations.
+  Pick or drop several at once: they are collected with a preview (card, period, operations,
+  totals, whose, already imported) and imported, oldest first, when you press Import.
 - **Batched questions** — the local model guesses the category of each new merchant, questions
   pile up in batches, and a whole batch is answered at once; answered merchants are categorized automatically.
 - **Home dashboard** — this month so far against the same days of the last one, the month's pace,
