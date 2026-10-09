@@ -61,11 +61,11 @@ local model through Ollama. Your data never leaves your computer unless you conn
   everywhere and a slow-down after wrong guesses; stored as a salted PBKDF2 hash. Without one,
   every page warns that anyone on the network can open it. Forgot it:
   `spendbot reset-password [account id]` prints a temporary one.
-- **Updates** — spendbot checks GitHub for new releases, shows what's new on the Settings page
-  and installs the update with one button: the archive is checked against the release's
+- **Updates** — spendbot checks GitHub for new releases every 5 minutes, marks Settings in the
+  menu when one is out, shows what's new there and installs it with one button: the archive is checked against the release's
   SHA256SUMS.txt, the program is replaced (the old one kept as `spendbot.old`) and restarted.
-  `spendbot update` does the same from a terminal, `spendbot update --check` only looks. Builds
-  from source are told to `git pull` instead.
+  `spendbot update` does the same from a terminal, `spendbot update --check` only looks. A build
+  from source installs a release the same way; building from source again replaces it.
 - **Accounts** — several people on one spendbot, each with a database of their own; the
   password tells whose account it is. A statement of another person than the account's earlier
   ones is held with a warning: import it anyway, or create an account for that person and import
@@ -107,7 +107,7 @@ variables take precedence. Templates: `deploy/dist/spendbot.env` (one computer) 
 | `CLICKHOUSE_URL` | empty | when set, operations sync to ClickHouse and analytics reads from it |
 | `QUIET_HOURS`, `WEEKLY_REPORT`, `EVENING_REPORT` | `23:00-08:00`, `MON 10:00`, `21:00` | bot questions and summaries |
 | `OPEN_BROWSER`, `LOG_FORMAT` | `0`, `json` | for desktop use: `1`, `text` |
-| `UPDATE_CHECK` | `on` | asks GitHub for new releases every 6 hours; `off` turns it off |
+| `UPDATE_CHECK` | `on` | asks GitHub for new releases every 5 minutes; `off` turns it off |
 
 ## Full setup on a Mac
 

@@ -1,7 +1,8 @@
 // Package update finds out whether a newer spendbot is released on GitHub and installs it:
 // it downloads the archive for this computer, checks it against SHA256SUMS.txt from the same
-// release and puts the new program in place of the running one. Builds from source (a version
-// that is not a plain release tag) are never replaced: they update with git pull.
+// release and puts the new program in place of the running one. A build from source (a version
+// that is not a plain release tag) can install a release too: the release program takes the
+// place of the built one, and building from source again puts a built one back.
 package update
 
 import (
@@ -56,8 +57,8 @@ type Status struct {
 	Current   string
 	Latest    *Release
 	Newer     bool // Latest is newer than Current
-	Source    bool // a build from source: updates with git pull, not here
-	CanApply  bool // this program can replace itself (a release build, not in Docker)
+	Source    bool // a build from source: installing puts the release in place of the built program
+	CanApply  bool // this program can replace itself (not in Docker)
 	CheckedAt time.Time
 	Err       string
 	Off       bool // checking is turned off (UPDATE_CHECK=off)
@@ -145,7 +146,7 @@ func (u *Updater) Status() Status {
 	defer u.mu.Unlock()
 	_, release := parse(u.current)
 	st := Status{Current: u.current, Latest: u.latest, CheckedAt: u.checked, Err: u.err, Off: u.off,
-		Source: !release, CanApply: release && !inDocker()}
+		Source: !release, CanApply: !inDocker()}
 	if u.latest != nil {
 		st.Newer = Newer(u.current, u.latest.Tag)
 	}
@@ -196,12 +197,16 @@ func (u *Updater) fetchLatest(ctx context.Context) (*Release, error) {
 	return &rel, nil
 }
 
-// Run checks a minute after start and then every 6 hours.
+// CheckEvery is how often Run asks GitHub: a new release shows on the page within minutes, and
+// 12 requests an hour stay well under GitHub's limit of 60 for a computer without a token.
+const CheckEvery = 5 * time.Minute
+
+// Run checks soon after start and then every CheckEvery.
 func (u *Updater) Run(ctx context.Context) {
 	if u.off {
 		return
 	}
-	wait := time.Minute
+	wait := 15 * time.Second
 	for {
 		select {
 		case <-ctx.Done():
@@ -211,7 +216,7 @@ func (u *Updater) Run(ctx context.Context) {
 		if err := u.Check(ctx); err != nil && ctx.Err() == nil {
 			u.log.Warn("update: check", "err", err)
 		}
-		wait = 6 * time.Hour
+		wait = CheckEvery
 	}
 }
 
@@ -240,11 +245,7 @@ func (u *Updater) Apply(ctx context.Context) (string, error) {
 	u.mu.Unlock()
 	defer func() { u.mu.Lock(); u.busy = false; u.mu.Unlock() }()
 
-	st := u.Status()
-	switch {
-	case st.Source:
-		return "", errors.New("this spendbot is built from source: update it with git pull")
-	case !st.CanApply:
+	if !u.Status().CanApply {
 		return "", errors.New("this spendbot cannot replace itself here (Docker): pull the new image")
 	}
 	rel, err := u.fetchLatest(ctx)

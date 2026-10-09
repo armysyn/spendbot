@@ -140,6 +140,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; v
 .flash.warn { background: var(--warn-bg); } .flash.warn .i { color: var(--warn); }
 .flash.bad { background: var(--bad-bg); } .flash.bad .i { color: var(--bad); }
 .flash > div { flex: 1; }
+.flash[hidden] { display: none; } /* display: flex would show it anyway */
 .flash a { color: inherit; font-weight: 600; }
 
 /* ---- chips, segmented, switch ---- */
@@ -461,7 +462,7 @@ code { background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-
     <div class="nav-group">App</div>
     <a href="/ui/issues" {{if eq .Nav "issues"}}class="on" aria-current="page"{{end}}>{{template "icon" "flag"}}Issues{{if .Issues}}<span class="count muted-count" title="open issues">{{.Issues}}</span>{{end}}</a>
     <a href="/ui/security" {{if eq .Nav "security"}}class="on" aria-current="page"{{end}}>{{template "icon" "shield"}}Security{{if .NoPassword}}<span class="count muted-count" title="no password">!</span>{{end}}</a>
-    <a href="/ui/settings" {{if eq .Nav "settings"}}class="on" aria-current="page"{{end}}>{{template "icon" "settings"}}Settings</a>
+    <a href="/ui/settings" {{if eq .Nav "settings"}}class="on" aria-current="page"{{end}}>{{template "icon" "settings"}}Settings{{with .Update}}<span class="count" title="{{.}} is out: install it in Settings">new</span>{{end}}</a>
   </nav>
   <div class="side-foot">
     <a class="btn secondary" href="/ui#upload">{{template "icon" "upload"}}Upload statement</a>

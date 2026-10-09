@@ -116,17 +116,19 @@ func TestBadChecksumIsNotInstalled(t *testing.T) {
 	}
 }
 
-func TestSourceBuildIsNotReplaced(t *testing.T) {
-	srv := fakeGitHub(t, "v0.5.0", []byte("new"), false)
+// A build from source learns about releases and installs them like a release build.
+func TestSourceBuildInstalls(t *testing.T) {
+	srv := fakeGitHub(t, "v0.5.0", []byte("new program"), false)
 	u, exe := newTest(t, "v0.4.0-2-gabc-dirty", srv.URL)
-	if _, err := u.Apply(context.Background()); err == nil || !strings.Contains(err.Error(), "git pull") {
-		t.Fatalf("source build: %v", err)
-	}
-	if b, _ := os.ReadFile(exe); string(b) != "old program" {
-		t.Error("untouched")
-	}
 	u.Check(context.Background())
-	if st := u.Status(); !st.Newer || !st.Source || st.CanApply {
-		t.Errorf("a source build still learns about the release: %+v", st)
+	if st := u.Status(); !st.Newer || !st.Source || st.CanApply == inDocker() {
+		t.Fatalf("status: %+v", st)
+	}
+	rel, _ := u.fetchLatest(context.Background())
+	if err := u.install(context.Background(), rel, "darwin", "arm64", exe); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "new program" {
+		t.Errorf("program: %q", b)
 	}
 }

@@ -126,9 +126,6 @@ func runUpdate(cfg config.Config, checkOnly bool, log *slog.Logger) int {
 	case checkOnly:
 		fmt.Println("\n" + st.Latest.Body)
 		return 0
-	case st.Source:
-		fmt.Println("This spendbot is built from source: update it with git pull, then build it again.")
-		return 0
 	}
 	tag, err := u.Apply(ctx)
 	if err != nil {

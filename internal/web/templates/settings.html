@@ -65,7 +65,7 @@
   <dl class="kv">
     <dt>This spendbot</dt><dd><code>{{.Current}}</code>{{if .Source}} <span class="muted small">— built from source</span>{{end}}</dd>
     <dt>Latest release</dt><dd>{{with .Latest}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Tag}}</a> <span class="muted small">· {{date .Published}}</span>{{else}}<span class="muted">not checked yet</span>{{end}}</dd>
-    <dt>Checked</dt><dd>{{if .CheckedAt.IsZero}}<span class="muted">not yet</span>{{else}}{{datetime .CheckedAt}}{{end}}{{if .Off}} <span class="muted small">· automatic checks are off (UPDATE_CHECK=off)</span>{{else}} <span class="muted small">· every 6 hours</span>{{end}}{{with .Err}} <span class="bad small">· {{.}}</span>{{end}}</dd>
+    <dt>Checked</dt><dd>{{if .CheckedAt.IsZero}}<span class="muted">not yet</span>{{else}}{{datetime .CheckedAt}}{{end}}{{if .Off}} <span class="muted small">· automatic checks are off (UPDATE_CHECK=off)</span>{{else}} <span class="muted small">· every 5 minutes</span>{{end}}{{with .Err}} <span class="bad small">· {{.}}</span>{{end}}</dd>
   </dl>
   {{if and .Newer .Latest}}
   <div class="notes" style="margin-top: 12px; border-top: 1px solid var(--line); padding-top: 4px">
@@ -77,8 +77,8 @@
     {{if $.CanUpdate}}
     <form method="post" action="/ui/settings/update/check"><button class="btn sm secondary">Check now</button></form>
     {{if .Newer}}{{if .CanApply}}
-    <form method="post" action="/ui/settings/update/apply" id="update-form"><button class="btn sm" {{if $.Updating.Running}}disabled{{end}} onclick="return confirm('Install {{.Latest.Tag}} and restart spendbot? It takes a minute; your data stays as it is.')">{{template "icon" "download"}}Update to {{.Latest.Tag}}</button></form>
-    {{else if .Source}}<span class="muted small">This copy is built from source: update it with <code>git pull</code> and build it again.</span>
+    <form method="post" action="/ui/settings/update/apply" id="update-form"><button class="btn sm" {{if $.Updating.Running}}disabled{{end}} onclick="return confirm('Install {{.Latest.Tag}} and restart spendbot? It takes a minute; your data stays as it is.')">{{template "icon" "download"}}Install {{.Latest.Tag}}</button></form>
+    {{if .Source}}<span class="muted small">This copy is built from source: the release takes the place of the built program, and building from source again puts a built one back.</span>{{end}}
     {{else}}<span class="muted small">This copy runs in Docker: pull the new image.</span>{{end}}{{end}}
     {{else}}<span class="muted small">Updating the program is done from the first account.</span>{{end}}
   </div>

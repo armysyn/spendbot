@@ -19,7 +19,7 @@ type Config struct {
 
 	OpenBrowser bool   // open the page in a browser after start (handy on Windows)
 	LogFormat   string // json | text
-	UpdateCheck bool   // ask GitHub for new releases every 6 hours (UPDATE_CHECK=off turns it off)
+	UpdateCheck bool   // ask GitHub for new releases every 5 minutes (UPDATE_CHECK=off turns it off)
 	File        string // settings file that was read (spendbot.env); empty — environment only
 
 	IngestToken string // empty — generated once and stored in the database
