@@ -92,7 +92,7 @@ func TestUpdateFromSettings(t *testing.T) {
 		t.Error("home banner")
 	}
 	page := b.req("GET", "/ui/settings", nil).Body.String()
-	if !strings.Contains(page, "Update to v9.9.9") || !strings.Contains(page, "<li>shiny</li>") || !strings.HasSuffix(strings.TrimSpace(page), "</html>") {
+	if !strings.Contains(page, "Install v9.9.9") || !strings.Contains(page, "<li>shiny</li>") || !strings.HasSuffix(strings.TrimSpace(page), "</html>") {
 		t.Fatalf("settings:\n%s", tail(page))
 	}
 	b.req("POST", "/ui/settings/update/apply", url.Values{})
@@ -109,21 +109,39 @@ func TestUpdateFromSettings(t *testing.T) {
 	}
 }
 
-func TestSourceBuildOnlyTold(t *testing.T) {
+// A build from source installs a release from the page too; every page marks Settings.
+func TestSourceBuildInstalls(t *testing.T) {
 	gh := fakeRelease(t, "v9.9.9")
+	exe := filepath.Join(t.TempDir(), "spendbot")
+	os.WriteFile(exe, []byte("built program"), 0o755)
 	st, err := store.Open(context.Background(), t.TempDir()+"/t.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 	up := update.New("v0.5.0-3-gabc-dirty", false, slogDiscard())
-	up.Point(gh.URL, func() (string, error) { return "/nonexistent", nil })
+	up.Point(gh.URL, func() (string, error) { return exe, nil })
 	up.Check(context.Background())
-	srv := New(st, nil, 3, time.Minute, almaty, slogDiscard()).WithSettings(Settings{Updater: up, Restart: func() {}})
+	restarted := make(chan bool, 1)
+	srv := New(st, nil, 3, time.Minute, almaty, slogDiscard()).WithSettings(Settings{Updater: up, Restart: func() { restarted <- true }})
 	mux := http.NewServeMux()
 	gateFor(t, mux, srv, "")
-	page := (&browser{h: mux}).req("GET", "/ui/settings", nil).Body.String()
-	if !strings.Contains(page, "git pull") || strings.Contains(page, "Update to v9.9.9") {
-		t.Error("a source build is only told")
+	b := &browser{h: mux}
+	page := b.req("GET", "/ui/settings", nil).Body.String()
+	if !strings.Contains(page, "Install v9.9.9") || !strings.Contains(page, "built from source") || strings.Contains(page, "git pull") ||
+		!strings.Contains(page, "every 5 minutes") {
+		t.Fatalf("settings:\n%s", tail(page))
+	}
+	if ops := b.req("GET", "/ui/operations", nil).Body.String(); !strings.Contains(ops, `title="v9.9.9 is out: install it in Settings">new</span>`) {
+		t.Error("the menu does not mark Settings")
+	}
+	b.req("POST", "/ui/settings/update/apply", url.Values{})
+	select {
+	case <-restarted:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("no restart; progress %+v", srv.upd.snapshot())
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "new program" {
+		t.Errorf("program: %q", got)
 	}
 }

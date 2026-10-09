@@ -31,6 +31,7 @@ type Page struct {
 	SignedIn   bool
 	Bare       bool   // no menu: the sign-in page
 	Account    string // whose account, shown when there are several
+	Update     string // a newer release this spendbot can install, for the menu
 }
 
 func (p *Page) page() *Page { return p }
@@ -54,6 +55,9 @@ func (s *Server) show(w http.ResponseWriter, r *http.Request, name, title, nav s
 	p := data.page()
 	p.Title, p.Nav, p.Open, p.Path = title, nav, s.openQuestions(r.Context()), r.URL.RequestURI()
 	p.Issues, _, _ = s.st.IssueCounts(r.Context())
+	if st := s.updateStatus(); st != nil && st.Newer && s.canUpdate() {
+		p.Update = st.Latest.Tag
+	}
 	v := viewerFrom(r.Context())
 	p.NoPassword, p.SignedIn = v.Open, v.SessionID != ""
 	if v.Accounts > 1 {
