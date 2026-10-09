@@ -52,6 +52,7 @@
         <td class="num"><b>{{if .Never}}—{{else}}{{.Years}}{{end}}</b></td></tr>{{end}}</tbody>
     </table></div>
   </details>
+  {{template "passnote" (dict "Sum" $.Flow.Passed "N" $.Flow.PassedN "Period" $.Year)}}
   <p class="muted tiny" style="margin-bottom: 0">Income and what went out are the last 12 months, as on the Income page; the capital is the net worth above. Saving more both adds to the capital and lowers the target, so years fall fast as the rate grows. A guide, not a plan: returns and prices vary.</p>
 </div>
 {{end}}{{end}}

@@ -20,6 +20,9 @@ type LedgerRow struct {
 	Source       string
 	Categories   []string // part categories in order; empty — uncategorized
 	Splits       []int64  // part amounts
+	// PassThrough is the part of the amount, positive, that only passed through the card as
+	// cash (analytics.MarkPassThrough): a whole withdrawal, or what of a top-up paid for one.
+	PassThrough int64
 }
 
 // Ledger returns all operations from SQLite. Personal finance means tens of thousands of
