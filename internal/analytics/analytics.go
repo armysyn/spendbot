@@ -635,6 +635,7 @@ type Reconciliation struct {
 	Statement store.StatementInfo
 	Lines     []ReconLine
 	OK        bool
+	Deleted   int // operations the person deleted, still counted: the bank did
 }
 
 type ReconLine struct {
@@ -645,16 +646,20 @@ type ReconLine struct {
 }
 
 // Reconcile compares the statement header totals with sums of operations of the same kind
-// over the statement period — regardless of status, because the bank counts everything.
+// over the statement period — regardless of status, because the bank counts everything. rows
+// should include deleted statement operations (store.TrashLedger) for the same reason.
 func Reconcile(rows []store.LedgerRow, si store.StatementInfo) Reconciliation {
 	p := Period{From: si.From, To: si.To.AddDate(0, 0, 1)}
 	byKind := map[string]int64{}
+	rec := Reconciliation{Statement: si, OK: true}
 	for _, r := range rows {
 		if r.Kind != "" && p.contains(r.At) {
 			byKind[r.Kind] -= r.Amount // statements show spending as negative
+			if r.Status == store.StatusDeleted {
+				rec.Deleted++
+			}
 		}
 	}
-	rec := Reconciliation{Statement: si, OK: true}
 	for _, sm := range kaspi.Summaries {
 		want, ok := si.Summary[sm.Label]
 		if !ok {

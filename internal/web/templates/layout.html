@@ -264,7 +264,13 @@ a.op-title:hover { text-decoration: underline; }
 .op details.edit > summary { list-style: none; cursor: pointer; }
 .op details.edit > summary::-webkit-details-marker { display: none; }
 .edit-pop { position: absolute; right: 12px; top: calc(100% - 6px); z-index: 4; width: min(340px, calc(100vw - 48px)); background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; padding: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / .15); display: grid; gap: 10px; }
+.edit-pop form { display: grid; gap: 10px; margin: 0; }
+.edit-pop form + form { border-top: 1px solid var(--line); padding-top: 10px; }
 .edit-pop select, .edit-pop input[type=text] { width: 100%; }
+.ava.pick { background: none; cursor: pointer; }
+.ava.pick input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.bulkbar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 14px;
+  padding: 10px 14px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 6px 20px rgb(0 0 0 / .12); }
 .edit-pop label.check { font-size: 13px; display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); }
 
 /* ---- calendar ---- */

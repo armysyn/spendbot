@@ -67,7 +67,8 @@ func nullString(s string) any {
 	return s
 }
 
-// InsertTx saves a transaction. If one with the same ExternalKey exists, it returns its id and dup=true.
+// InsertTx saves a transaction. If one with the same ExternalKey exists, it returns its id and dup=true;
+// if one was deleted (the trash), it returns id 0 and dup=true: a payment sent again stays deleted.
 func (s *Store) InsertTx(ctx context.Context, t Tx) (id int64, dup bool, err error) {
 	if t.Status == "" {
 		t.Status = StatusPending
@@ -76,6 +77,10 @@ func (s *Store) InsertTx(ctx context.Context, t Tx) (id int64, dup bool, err err
 		t.CreatedAt = time.Now()
 	}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
+		if gone, err := keyTrashed(ctx, tx, t.ExternalKey); err != nil || gone {
+			dup = gone
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO transactions
 			(external_key, occurred_at, amount_minor, currency, amount_raw, merchant_raw, merchant_norm,
 			 card, source, status, note, kind, created_at)

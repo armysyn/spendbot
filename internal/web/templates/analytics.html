@@ -193,7 +193,7 @@
   <div class="stack" style="margin-top: 12px">
   {{range .Recs}}
     <div class="card">
-      <div class="card-head"><h3>{{if .OK}}<span class="good">✓</span>{{else}}<span class="bad">✗</span>{{end}} Statement {{.Statement.Account}} · {{date .Statement.From}} – {{date .Statement.To}}</h3><span class="muted tiny">{{len .Lines}} header totals{{if .OK}}, all match to the tiyn{{end}}</span></div>
+      <div class="card-head"><h3>{{if .OK}}<span class="good">✓</span>{{else}}<span class="bad">✗</span>{{end}} Statement {{.Statement.Account}} · {{date .Statement.From}} – {{date .Statement.To}}</h3><span class="muted tiny">{{len .Lines}} header totals{{if .OK}}, all match to the tiyn{{end}}{{with .Deleted}} · counting {{.}} deleted {{plural . "operation" "operations"}}{{end}}</span></div>
       <div class="scroll"><table class="data">
         <thead><tr><th>Total</th><th class="num">Statement</th><th class="num">Database</th><th></th></tr></thead>
         <tbody>{{range .Lines}}<tr><td>{{.Label}}</td><td class="num">{{kzt .Statement}}</td><td class="num">{{kzt .Database}}</td><td>{{if .OK}}<span class="good">✓</span>{{else}}<b class="bad">differs</b>{{end}}</td></tr>{{end}}</tbody>

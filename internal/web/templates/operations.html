@@ -5,9 +5,10 @@
     <h1>Operations</h1>
     <div class="sub">{{if .Empty}}Nothing yet{{else}}{{.Current.Title}}{{if not .Custom}} · {{date .Current.From}} – {{date (.Current.To.AddDate 0 0 -1)}}{{end}}{{end}}</div>
   </div>
-  {{if not .Empty}}<div class="actions">{{template "datepicker" .Picker}}<a class="btn secondary sm" href="{{.CSV}}">{{template "icon" "download"}}Export CSV</a></div>{{end}}
+  {{if not .Empty}}<div class="actions">{{template "datepicker" .Picker}}<a class="btn secondary sm" href="{{.CSV}}">{{template "icon" "download"}}Export CSV</a>{{if .Select}}<a class="btn secondary sm on" href="{{swap .State "select" ""}}">{{template "icon" "x"}}Done</a>{{else}}<a class="btn secondary sm" href="{{swap .State "select" "1"}}">{{template "icon" "check"}}Select</a>{{end}}</div>{{end}}
 </div>
 {{template "flash" .Flash}}
+{{if .Undo}}<form method="post" action="/ui/trash/restore" style="margin: -6px 0 14px"><input type="hidden" name="id" value="{{.Undo}}"><input type="hidden" name="back" value="{{.Back}}"><button class="btn secondary sm">Undo</button></form>{{end}}
 {{if .Empty}}
   <div class="card empty">{{template "icon" "ops"}}<div>No operations yet — <a href="/ui#upload">upload a Kaspi statement</a>.</div></div>
 {{else}}
@@ -139,20 +140,37 @@
   {{$cats := .Categories}}{{$back := .Back}}{{$type := .Type}}
   {{if .Flat}}
   <div class="ops" style="margin-top: 14px">
-    {{range .Days}}{{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type "Date" true)}}{{end}}{{end}}
+    {{range .Days}}{{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type "Date" true "Select" $.Select)}}{{end}}{{end}}
   </div>
   {{else}}
   {{range .Days}}
   <div class="day-head"><span>{{dayTitle .Date now}}</span>{{if .Total}}<span class="num">{{kzt .Total}}</span>{{end}}</div>
   <div class="ops">
-    {{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type)}}{{end}}
+    {{range .Ops}}{{template "op" (dict "Op" . "Cats" $cats "Back" $back "Type" $type "Select" $.Select)}}{{end}}
   </div>
   {{end}}
+  {{end}}
+  {{if .Select}}
+  <form id="bulk" class="bulkbar" method="post" action="/ui/ops/delete" onsubmit="const n = document.querySelectorAll('input[form=bulk][name=id]:checked').length; return n > 0 && confirm('Delete ' + n + (n === 1 ? ' operation' : ' operations') + '? They can be restored from Deleted operations.')">
+    <input type="hidden" name="back" value="{{.Back}}">
+    <label class="check small"><input type="checkbox" id="pick-all"> All shown</label>
+    <span class="muted small" id="picked">Nothing selected</span>
+    <button class="btn danger sm" style="margin-left: auto">Delete selected</button>
+  </form>
+  <script>
+  (() => {
+    const boxes = () => document.querySelectorAll('input[form=bulk][name=id]');
+    const all = document.getElementById('pick-all'), out = document.getElementById('picked');
+    const count = () => { const n = [...boxes()].filter(b => b.checked).length; out.textContent = n ? n + ' selected' : 'Nothing selected'; all.checked = n > 0 && n === boxes().length; };
+    all.addEventListener('change', () => { boxes().forEach(b => b.checked = all.checked); count(); });
+    document.addEventListener('change', e => { if (e.target.matches('input[form=bulk]')) count(); });
+  })();
+  </script>
   {{end}}
   {{if .More}}<p style="text-align: center; margin-top: 18px"><a class="btn secondary" href="{{.More}}">Show more</a> <span class="muted small">{{.Shown}} of {{len .Ops.Ops}} shown</span></p>{{end}}
 {{else}}
   <div class="card empty" style="margin-top: 14px">{{template "icon" "search"}}<div>Nothing matches these filters.</div></div>
 {{end}}
-<p class="muted small" style="margin-top: 18px">The ✎ button changes a category. Spending totals here match the analytics page for the same period, category or merchant. Amount filters compare amounts without their sign. “First time” and “only once” look at the whole history with that merchant or person, in the same direction, not only at the current filters.</p>
+<p class="muted small" style="margin-top: 18px">The ✎ button changes a category or deletes the operation; Select deletes several at once{{if .Trashed}} · <a href="/ui/trash">{{.Trashed}} deleted {{plural .Trashed "operation" "operations"}}</a>{{end}}. Spending totals here match the analytics page for the same period, category or merchant. Amount filters compare amounts without their sign. “First time” and “only once” look at the whole history with that merchant or person, in the same direction, not only at the current filters.</p>
 {{end}}
 {{template "foot" .}}

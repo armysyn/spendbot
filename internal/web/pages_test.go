@@ -56,7 +56,7 @@ func TestPagesRender(t *testing.T) {
 		for _, p := range []string{"/ui", "/ui/analytics", "/ui/analytics?period=2026-08", "/ui/analytics?period=30d&nosave=1", "/ui/analytics?period=today", "/ui/analytics?period=week", "/ui/analytics?period=month",
 			"/ui/operations", "/ui/operations?type=all", "/ui/operations?type=transfers", "/ui/operations?cat=Cash&period=all", "/ui/operations?m=%23cash&period=all",
 			"/ui/operations?from=2026-08-02&to=2026-08-04&q=magnum", "/ui/operations?m=magnum", "/ui/categories",
-			"/ui/transfers", "/ui/transfers?name=Adam+S.", "/ui/trends", "/ui/trends?people=0&withsave=1", "/ui/wealth"} {
+			"/ui/transfers", "/ui/transfers?name=Adam+S.", "/ui/trends", "/ui/trends?people=0&withsave=1", "/ui/wealth", "/ui/trash", "/ui/operations?select=1"} {
 			w := do(h, "GET", p, nil, "", true)
 			if w.Code != http.StatusOK || !strings.HasSuffix(strings.TrimSpace(w.Body.String()), "</html>") {
 				t.Errorf("empty=%v %s: %d, cut short:\n%s", empty, p, w.Code, tail(w.Body.String()))

@@ -151,6 +151,7 @@ func (s *Store) MergeCategory(ctx context.Context, from, into int64) error {
 			{`UPDATE transactions SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 				WHERE id IN (SELECT tx_id FROM splits WHERE category_id = ?)`, []any{from}},
 			{"UPDATE splits SET category_id = ? WHERE category_id = ?", []any{into, from}},
+			{"UPDATE trash_splits SET category_id = ? WHERE category_id = ?", []any{into, from}},
 			{"UPDATE merchant_rules SET category_id = ? WHERE category_id = ?", []any{into, from}},
 			{"UPDATE merchant_questions SET guess_category_id = ? WHERE guess_category_id = ?", []any{into, from}},
 			{"DELETE FROM categories WHERE id = ?", []any{from}},

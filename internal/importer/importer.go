@@ -20,6 +20,7 @@ import (
 type Result struct {
 	Total      int   // operations in the statement
 	Duplicates int   // already imported before
+	Deleted    int   // imported before and deleted by the person: not brought back
 	Matched    int   // matched Wallet or manual transactions
 	Auto       int   // categorized from merchant memory
 	Review     int   // purchases without a category — they go to a question batch
@@ -30,6 +31,9 @@ type Result struct {
 func (r Result) String() string {
 	s := fmt.Sprintf("%d operations: %d new purchases (%d from merchant memory, %d to questions), %d not spending, "+
 		"%d matched Wallet, %d already imported", r.Total, r.Auto+r.Review, r.Auto, r.Review, r.Info, r.Matched, r.Duplicates)
+	if r.Deleted > 0 {
+		s += fmt.Sprintf(", %d deleted earlier and left out", r.Deleted)
+	}
 	if r.Verify != nil {
 		s += "\n⚠ statement totals do not match: " + r.Verify.Error()
 	}
@@ -57,6 +61,13 @@ func Import(ctx context.Context, st *store.Store, s statement.Statement, now tim
 			res.Duplicates++
 			continue
 		}
+		// deleted by the person: it stays deleted
+		if gone, err := st.OpTrashed(ctx, key); err != nil {
+			return res, err
+		} else if gone {
+			res.Deleted++
+			continue
+		}
 		// In transactions spending is positive and income negative.
 		amount := -op.AmountMinor
 		// Statements have no time: noon keeps the day stable across time zone conversions.
@@ -69,7 +80,15 @@ func Import(ctx context.Context, st *store.Store, s statement.Statement, now tim
 			return res, err
 		}
 		if len(twins) >= occ[i] {
-			if err := st.LinkOp(ctx, key, twins[occ[i]-1]); err != nil {
+			tw := twins[occ[i]-1]
+			if tw.TrashID != 0 {
+				if err := st.LinkTrashedOp(ctx, key, tw.TrashID); err != nil {
+					return res, err
+				}
+				res.Deleted++
+				continue
+			}
+			if err := st.LinkOp(ctx, key, tw.ID); err != nil {
 				return res, err
 			}
 			res.Duplicates++

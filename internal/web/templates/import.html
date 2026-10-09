@@ -38,7 +38,7 @@
     <div class="kpi"><div class="label">Categorized</div><div class="value num">{{.Result.Auto}}</div><div class="note">from remembered merchants</div></div>
     <div class="kpi"><div class="label">Need a category</div><div class="value num">{{.Result.Review}}</div><div class="note">questions come in a batch</div></div>
     <div class="kpi"><div class="label">Not spending</div><div class="value num">{{.Result.Info}}</div><div class="note">incoming money, transfers</div></div>
-    <div class="kpi"><div class="label">Already there</div><div class="value num">{{add .Result.Duplicates .Result.Matched}}</div><div class="note">{{.Result.Duplicates}} imported before · {{.Result.Matched}} Wallet {{plural .Result.Matched "match" "matches"}}</div></div>
+    <div class="kpi"><div class="label">Already there</div><div class="value num">{{add .Result.Duplicates .Result.Matched}}</div><div class="note">{{.Result.Duplicates}} imported before · {{.Result.Matched}} Wallet {{plural .Result.Matched "match" "matches"}}{{with .Result.Deleted}} · {{.}} deleted earlier, left out{{end}}</div></div>
   </div>
   <p class="muted small" style="margin: 16px 0">The analysis is already running in the background: questions and insights will appear on the home page (and in Telegram, if connected).</p>
   <p class="muted small">Operations in the statement: <b>{{.Result.Total}}</b></p>

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"spendbot/internal/analytics"
 	"spendbot/internal/kaspi"
 	"spendbot/internal/statement"
 	"spendbot/internal/store"
@@ -170,5 +171,56 @@ func TestTransferRule(t *testing.T) {
 	totals, _ := st.Totals(ctx, day(1), day(10))
 	if len(totals) != 1 || totals[0].Category != "Rent" || totals[0].Minor != 26000000 {
 		t.Fatalf("totals: %+v", totals)
+	}
+}
+
+// A deleted operation stays deleted when the statement, or a newer version of it, is imported
+// again; the statement still reconciles; restored, it is back once.
+func TestDeletedStaysDeleted(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	now := time.Date(2026, 10, 5, 21, 0, 0, 0, almaty)
+	op := func(amount int64, details string) statement.Op {
+		return statement.Op{Date: day(5), AmountMinor: amount, Currency: "KZT", Kind: kaspi.Purchase, Details: details}
+	}
+	morning := statement.Statement{Account: "*0000", From: day(1), To: day(5), Summary: map[string]int64{"Покупки": -3000},
+		Ops: []statement.Op{op(-1000, "KIOSK.KZ"), op(-2000, "UBER")}}
+	evening := statement.Statement{Account: "*0000", From: day(1), To: day(5), Summary: map[string]int64{"Покупки": -8000},
+		Ops: []statement.Op{op(-5000, "MAGNUM"), op(-1000, "KIOSK.KZ"), op(-2000, "UBER")}}
+	Import(ctx, st, morning, now)
+	rows, _ := st.Ledger(ctx, almaty)
+	var uber int64
+	for _, r := range rows {
+		if r.Merchant == "UBER" {
+			uber = r.TxID
+		}
+	}
+	trashed, err := st.TrashTxs(ctx, []int64{uber}, now)
+	if err != nil || len(trashed) != 1 {
+		t.Fatalf("trash: %v %v", trashed, err)
+	}
+	if res, _ := Import(ctx, st, morning, now); res.Deleted != 1 || res.Duplicates != 1 {
+		t.Fatalf("again: %+v", res)
+	}
+	if res, _ := Import(ctx, st, evening, now); res.Deleted != 1 || res.Review != 1 {
+		t.Fatalf("newer version: %+v", res)
+	}
+	live, _ := st.Ledger(ctx, almaty)
+	gone, _ := st.TrashLedger(ctx, almaty)
+	if len(live) != 2 || len(gone) != 1 || gone[0].Status != store.StatusDeleted {
+		t.Fatalf("live %d, deleted %d", len(live), len(gone))
+	}
+	infos, _ := st.Statements(ctx, almaty)
+	if rec := analytics.Reconcile(append(live, gone...), infos[0]); !rec.OK || rec.Deleted != 1 {
+		t.Fatalf("reconcile: %+v", rec)
+	}
+	if n, err := st.RestoreTrash(ctx, trashed); err != nil || n != 1 {
+		t.Fatalf("restore: %d %v", n, err)
+	}
+	if res, _ := Import(ctx, st, evening, now); res.Duplicates != 3 || res.Deleted != 0 {
+		t.Fatalf("after restore: %+v", res)
+	}
+	if live, _ := st.Ledger(ctx, almaty); len(live) != 3 {
+		t.Fatalf("live after restore: %d", len(live))
 	}
 }
