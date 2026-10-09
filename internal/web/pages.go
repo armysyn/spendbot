@@ -288,6 +288,7 @@ type operationsData struct {
 	Picker       picker
 	Back         string // this page, to come back after an edit
 	CSV          string
+	Cash         *cashBox // filtered to cash: what passed through, skipping by hand
 }
 
 const opsPage = 200
@@ -478,6 +479,12 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.Back = r.URL.RequestURI()
+	if d.Merchant == analytics.CashKey || d.Category == analytics.CashCategory {
+		if d.Cash, err = s.cashBox(r, rows, d.Current); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	cq := cloneValues(q)
 	cq.Del("limit")
 	cq.Del("msg")

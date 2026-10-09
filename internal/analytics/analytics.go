@@ -29,11 +29,12 @@ const (
 )
 
 // IsSpend reports spending: a purchase (refunds negative) or a cash withdrawal in tenge,
-// unless the person skipped it. Transfers to people, top-ups and incoming money are not
-// spending — except transfers the person gave a category (rent and such): those are done.
-// Wallet payments and manual entries have no statement kind.
+// unless the person skipped it or the cash only passed through the card (MarkPassThrough).
+// Transfers to people, top-ups and incoming money are not spending — except transfers the
+// person gave a category (rent and such): those are done. Wallet payments and manual entries
+// have no statement kind.
 func IsSpend(r store.LedgerRow) bool {
-	if r.Currency != "KZT" || r.Status == store.StatusIgnored {
+	if r.Currency != "KZT" || r.Status == store.StatusIgnored || r.PassThrough > 0 && r.Kind == cash {
 		return false
 	}
 	switch r.Kind {

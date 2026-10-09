@@ -31,6 +31,8 @@ type wealthData struct {
 	Cards     []analytics.Series
 	Chart     template.HTML
 	FI        analytics.FI
+	Flow      analytics.Flow   // the last 12 months behind FI
+	Year      analytics.Period // those months
 	Today     string
 	AssetKind []string
 	DebtKind  []string
@@ -104,6 +106,7 @@ func (s *Server) wealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow := analytics.CashFlow(rows, f)
+	d.Flow, d.Year = flow, f.Period
 	d.R = analytics.BuildWealth(series, rows, d.DebtCats, flow, today)
 	d.FI = analytics.BuildFI(flow.Income, flow.Out, d.R.Now.Net)
 	d.Chart = wealthSVG(d.R.Points)

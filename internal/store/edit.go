@@ -162,3 +162,55 @@ func (s *Store) MergeCategory(ctx context.Context, from, into int64) error {
 		return nil
 	})
 }
+
+const keyPassThrough = "cash_pass_through"
+
+// PassThroughCash reports whether cash that only passed through the card is left out of
+// spending (analytics.MarkPassThrough). On unless the person turned it off.
+func (s *Store) PassThroughCash(ctx context.Context) (bool, error) {
+	v, err := s.GetKV(ctx, keyPassThrough)
+	return v != "off", err
+}
+
+func (s *Store) SetPassThroughCash(ctx context.Context, on bool) error {
+	v := "on"
+	if !on {
+		v = "off"
+	}
+	return s.SetKV(ctx, keyPassThrough, v)
+}
+
+// SkipWithdrawals marks the cash withdrawals in [from, to) skipped — not spending — and returns
+// how many it changed. Withdrawals with a category the person gave are left alone; questions
+// about the skipped ones are dropped, as for one skipped operation.
+func (s *Store) SkipWithdrawals(ctx context.Context, from, to time.Time) (int, error) {
+	var n int64
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		const which = `kind = ? AND status != ? AND amount_minor > 0 AND occurred_at >= ? AND occurred_at < ?
+			AND NOT EXISTS (SELECT 1 FROM splits WHERE tx_id = transactions.id)`
+		args := []any{kaspi.Withdrawal, StatusIgnored, fmtTime(from), fmtTime(to)}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM questions WHERE tx_id IN (SELECT id FROM transactions WHERE "+which+")", args...); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, "UPDATE transactions SET status = ? WHERE "+which, append([]any{StatusIgnored}, args...)...)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		return err
+	})
+	return int(n), err
+}
+
+// CountWithdrawals undoes SkipWithdrawals: skipped cash withdrawals in [from, to) are
+// spending again, waiting for a category as when they were imported.
+func (s *Store) CountWithdrawals(ctx context.Context, from, to time.Time) (int, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE transactions SET status = ?
+		WHERE kind = ? AND status = ? AND amount_minor > 0 AND occurred_at >= ? AND occurred_at < ?`,
+		StatusReview, kaspi.Withdrawal, StatusIgnored, fmtTime(from), fmtTime(to))
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}

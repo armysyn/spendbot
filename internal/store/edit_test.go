@@ -100,3 +100,49 @@ func TestMergeCategory(t *testing.T) {
 		}
 	}
 }
+
+func TestSkipWithdrawals(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	add := func(key string, days int, kind, status string) int64 {
+		tx := walletTx(key, 50000)
+		tx.OccurredAt = now.AddDate(0, 0, days)
+		tx.Source, tx.Kind, tx.Status = SourceImport, kind, status
+		id, _, err := s.InsertTx(ctx, tx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	review := add("a", 0, kaspi.Withdrawal, StatusReview)
+	asked := add("b", 1, kaspi.Withdrawal, StatusAsked)
+	given := add("c", 2, kaspi.Withdrawal, StatusPending)
+	s.CloseTx(ctx, given, []Split{{CategoryID: mustCat(t, s, "Home"), AmountMinor: 50000}}, false, now)
+	later := add("d", 30, kaspi.Withdrawal, StatusReview)
+	purchase := add("e", 0, kaspi.Purchase, StatusReview)
+
+	from, to := now.AddDate(0, 0, -1), now.AddDate(0, 0, 7)
+	if n, err := s.SkipWithdrawals(ctx, from, to); err != nil || n != 2 {
+		t.Fatalf("skipped %d, %v", n, err)
+	}
+	status := func(id int64) string {
+		tx, _ := s.GetTx(ctx, id)
+		return tx.Status
+	}
+	for id, want := range map[int64]string{review: StatusIgnored, asked: StatusIgnored, given: StatusDone, later: StatusReview, purchase: StatusReview} {
+		if got := status(id); got != want {
+			t.Errorf("tx %d: %s, want %s", id, got, want)
+		}
+	}
+	if n, err := s.CountWithdrawals(ctx, from, to); err != nil || n != 2 || status(asked) != StatusReview {
+		t.Fatalf("counted %d, %v, %s", n, err, status(asked))
+	}
+
+	if on, err := s.PassThroughCash(ctx); err != nil || !on {
+		t.Fatalf("pass-through is on by default: %v %v", on, err)
+	}
+	s.SetPassThroughCash(ctx, false)
+	if on, _ := s.PassThroughCash(ctx); on {
+		t.Fatal("turned off")
+	}
+}

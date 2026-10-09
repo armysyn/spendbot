@@ -210,6 +210,7 @@ func (s *Server) Handler() http.Handler {
 		ui.HandleFunc("POST /ui/transfers/ask", s.askOn("transfers"))
 		ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
 		ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
+		ui.HandleFunc("POST /ui/cash", s.cashAction)
 		ui.HandleFunc("GET /ui/categories", s.categories)
 		ui.HandleFunc("GET /ui/income", s.income)
 		ui.HandleFunc("GET /ui/trends", s.trends)
@@ -533,6 +534,8 @@ type analyticsData struct {
 	Newer        string
 	Heat         *heatmap
 	RecOK        int
+	Passed       int64 // cash that only passed through the card, left out of spending
+	PassedN      int
 	Empty        bool
 	Source       string           // where the data came from: ClickHouse or SQLite
 	Fallback     bool             // ClickHouse is configured but unreachable — SQLite data is shown
@@ -607,6 +610,7 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Heat = heat(rows, data.Current, exclude)
+	data.Passed, data.PassedN = analytics.PassedThrough(rows, data.Current)
 	stmts, err := s.st.Statements(ctx, s.loc)
 	if err != nil {
 		s.fail(w, err)
@@ -632,7 +636,7 @@ func (s *Server) ledger(ctx context.Context, data *analyticsData) ([]store.Ledge
 		rows, err := analysis.LedgerFromClickHouse(ctx, s.ch, s.loc)
 		if err == nil {
 			data.Source = "ClickHouse"
-			return rows, nil
+			return analysis.MarkPassThrough(ctx, s.st, rows)
 		}
 		s.log.Warn("web: clickhouse unavailable, using sqlite", "err", err)
 		data.Fallback = true
@@ -942,6 +946,9 @@ func (s *Server) rows(ctx context.Context) ([]store.LedgerRow, error) {
 	}
 	rows, err := s.st.Ledger(ctx, s.loc)
 	if err != nil {
+		return nil, err
+	}
+	if rows, err = analysis.MarkPassThrough(ctx, s.st, rows); err != nil {
 		return nil, err
 	}
 	s.cache.version, s.cache.rows = v, rows

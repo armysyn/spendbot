@@ -37,6 +37,7 @@
   <div class="kpi"><div class="label">{{if $fl.People}}Went out{{else}}Spent{{end}}</div><div class="value num">{{kzt $fl.Out}}</div><div class="note">{{if $fl.People}}spending {{compact $fl.Spend}} + to people {{compact (sub $fl.PeopleOut $fl.PeopleIn)}} · {{end}}{{kzt $fl.AvgSpend}} a month</div></div>
   <div class="kpi"><div class="label">{{if lt $fl.Net 0}}In the red{{else}}Left over{{end}}</div><div class="value num {{if lt $fl.Net 0}}net-neg{{else}}net-pos{{end}}">{{if gt $fl.Net 0}}+{{end}}{{kzt $fl.Net}}</div><div class="note">{{if $fl.Income}}{{pct $fl.Rate}} of income{{end}}{{if $fl.Deficit}} · {{$fl.Deficit}} {{plural $fl.Deficit "month" "months"}} in the red{{end}}</div></div>
 </div>
+{{template "passnote" (dict "Sum" $fl.Passed "N" $fl.PassedN "Period" .Current)}}
 
 <div class="card" style="margin-top: 14px">
   <div class="card-head"><h3>Income and spending by month</h3>
