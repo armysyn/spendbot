@@ -1,0 +1,42 @@
+{{template "head" .Page}}
+<div class="page-head">
+  <div>
+    <h1>Deleted operations</h1>
+    <div class="sub">{{if .Items}}{{len .Items}} {{plural (len .Items) "operation" "operations"}}{{else}}Nothing deleted{{end}}</div>
+  </div>
+  <div class="actions"><a class="btn secondary sm" href="/ui/operations">{{template "icon" "left"}}Operations</a></div>
+</div>
+{{template "flash" .Flash}}
+{{if .Items}}
+<div class="ops">
+  {{range .Items}}
+  <div class="op">
+    <label class="ava pick"><input type="checkbox" form="restore" name="id" value="{{.ID}}" aria-label="Select {{.Title}}, {{date .OccurredAt}}"></label>
+    <div class="op-main">
+      <span class="op-title">{{.Title}}</span>
+      <div class="op-meta">
+        <span>{{date .OccurredAt}}</span>
+        {{if .Kind}}<span class="tag">{{kind .Kind}}</span>{{else if eq .Source "wallet"}}<span class="tag">Apple Wallet</span>{{else if eq .Source "manual"}}<span class="tag">manual</span>{{end}}
+        {{range .Categories}}<span class="tag">{{.}}</span>{{end}}
+        <span class="muted">deleted {{date .DeletedAt}}</span>
+      </div>
+    </div>
+    <div class="op-amt-wrap" style="display: flex; align-items: center; gap: 4px">
+      <div class="op-amt off">{{if lt .AmountMinor 0}}+{{kzt (abs .AmountMinor)}}{{else}}−{{kzt .AmountMinor}}{{end}}</div>
+      <form method="post" action="/ui/trash/restore" style="margin: 0"><input type="hidden" name="id" value="{{.ID}}"><button class="btn ghost sm">Restore</button></form>
+    </div>
+  </div>
+  {{end}}
+</div>
+<form id="restore" class="bulkbar" method="post" action="/ui/trash/restore">
+  <label class="check small"><input type="checkbox" id="pick-all"> All</label>
+  <button class="btn secondary sm" style="margin-left: auto">Restore selected</button>
+</form>
+<script>
+document.getElementById('pick-all').addEventListener('change', e => document.querySelectorAll('input[form=restore][name=id]').forEach(b => b.checked = e.target.checked));
+</script>
+<p class="muted small" style="margin-top: 18px">Deleted operations are left out of every page. Those from a statement stay deleted when the statement is uploaded again, and still count when it is checked against its totals. Restoring brings an operation back with its category.</p>
+{{else}}
+<div class="card empty">{{template "icon" "ops"}}<div>Nothing deleted. Delete an operation from its ✎ menu on the <a href="/ui/operations">operations page</a>.</div></div>
+{{end}}
+{{template "foot" .}}

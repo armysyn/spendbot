@@ -1,7 +1,9 @@
-{{/* One operation row. Takes dict: Op, Cats (categories for editing, nil — no editing), Back, Type, Date (show the date). */}}
+{{/* One operation row. Takes dict: Op, Cats (categories for editing, nil — no editing), Back, Type, Date (show the date),
+   Select (a checkbox for the #bulk form instead of the avatar). */}}
 {{define "op"}}{{$o := .Op}}
 <div class="op">
-  <span class="ava{{if eq $o.MerchantKey "#cash"}} cash{{end}}" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>
+  {{if .Select}}<label class="ava pick"><input type="checkbox" form="bulk" name="id" value="{{$o.TxID}}" aria-label="Select {{$o.Merchant}}, {{date $o.At}}"></label>
+  {{else}}<span class="ava{{if eq $o.MerchantKey "#cash"}} cash{{end}}" style="--h: {{hue $o.Merchant}}" aria-hidden="true">{{initial $o.Merchant}}</span>{{end}}
   <div class="op-main">
     {{if $o.MerchantKey}}<a class="op-title" href="{{link "/ui/operations" "m" $o.MerchantKey "type" .Type}}" data-panel="{{link "/ui/panel/merchant" "m" $o.MerchantKey "type" .Type}}" data-panel-title="{{$o.Merchant}}" title="All operations of {{$o.Merchant}}">{{$o.Merchant}}</a>{{else}}<span class="op-title">{{$o.Merchant}}</span>{{end}}
     <div class="op-meta">
@@ -17,25 +19,33 @@
     {{if and $o.Spend (ge $o.Amount 0)}}<div class="op-amt">−{{kzt $o.Amount}}{{if ne $o.Amount $o.Full}}<span class="full">part of {{kzt $o.Full}}</span>{{end}}</div>
     {{else if lt $o.Amount 0}}<div class="op-amt in">+{{kzt (abs $o.Amount)}}{{if $o.Spend}}<span class="full">refund</span>{{end}}</div>
     {{else}}<div class="op-amt off">−{{kzt $o.Amount}}</div>{{end}}
-    {{if and .Cats $o.Editable}}
+    {{if .Cats}}
     <details class="edit">
-      <summary class="btn ghost sm" aria-label="Change category" title="Change category">{{template "icon" "edit"}}</summary>
-      <form class="edit-pop" method="post" action="/ui/op/{{$o.TxID}}/category">
+      <summary class="btn ghost sm" aria-label="Change or delete" title="Change or delete">{{template "icon" "edit"}}</summary>
+      <div class="edit-pop">
         <div><b>{{$o.Merchant}}</b> <span class="muted small">· {{date $o.At}} · {{kzt (abs $o.Full)}}</span></div>
-        {{$cur := ""}}{{if and $o.Spend (eq (len $o.Categories) 1)}}{{$cur = index $o.Categories 0}}{{end}}
-        {{/* only the current choice is in the page; the full list is filled in from #cat-options on open */}}
-        <select name="category" aria-label="Category" data-fill>
-          <option value="" disabled {{if and $o.Spend (not $cur)}}selected{{end}}>Choose a category…</option>
-          {{range .Cats}}{{if eq .Name $cur}}<option value="{{.ID}}" selected>{{.Name}}</option>{{end}}{{end}}
-          <option value="none" {{if not $o.Spend}}selected{{end}}>Not spending</option>
-        </select>
-        <input type="text" name="new_category" placeholder="or a new category" maxlength="40" aria-label="New category">
-        {{if and $o.MerchantKey (or (eq $o.Kind "") (purchase $o.Kind))}}
-        <label class="check"><input type="checkbox" name="all" value="1" checked> All purchases from {{$o.Merchant}} — past ones and future ones</label>
+        {{if $o.Editable}}
+        <form method="post" action="/ui/op/{{$o.TxID}}/category">
+          {{$cur := ""}}{{if and $o.Spend (eq (len $o.Categories) 1)}}{{$cur = index $o.Categories 0}}{{end}}
+          {{/* only the current choice is in the page; the full list is filled in from #cat-options on open */}}
+          <select name="category" aria-label="Category" data-fill>
+            <option value="" disabled {{if and $o.Spend (not $cur)}}selected{{end}}>Choose a category…</option>
+            {{range .Cats}}{{if eq .Name $cur}}<option value="{{.ID}}" selected>{{.Name}}</option>{{end}}{{end}}
+            <option value="none" {{if not $o.Spend}}selected{{end}}>Not spending</option>
+          </select>
+          <input type="text" name="new_category" placeholder="or a new category" maxlength="40" aria-label="New category">
+          {{if and $o.MerchantKey (or (eq $o.Kind "") (purchase $o.Kind))}}
+          <label class="check"><input type="checkbox" name="all" value="1" checked> All purchases from {{$o.Merchant}} — past ones and future ones</label>
+          {{end}}
+          <input type="hidden" name="back" value="{{.Back}}">
+          <div><button class="btn sm">Save</button></div>
+        </form>
         {{end}}
-        <input type="hidden" name="back" value="{{.Back}}">
-        <div><button class="btn sm">Save</button></div>
-      </form>
+        <form method="post" action="/ui/ops/delete" onsubmit="return confirm('Delete this operation? It can be restored from Deleted operations.')">
+          <input type="hidden" name="id" value="{{$o.TxID}}"><input type="hidden" name="back" value="{{.Back}}">
+          <div><button class="btn danger sm">Delete operation</button></div>
+        </form>
+      </div>
     </details>
     {{end}}
   </div>

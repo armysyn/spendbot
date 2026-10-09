@@ -211,6 +211,9 @@ func (s *Server) Handler() http.Handler {
 		ui.HandleFunc("POST /ui/categories/ask", s.askOn("categories"))
 		ui.HandleFunc("POST /ui/op/{id}/category", s.opCategory)
 		ui.HandleFunc("POST /ui/cash", s.cashAction)
+		ui.HandleFunc("POST /ui/ops/delete", s.deleteOps)
+		ui.HandleFunc("POST /ui/trash/restore", s.restoreOps)
+		ui.HandleFunc("GET /ui/trash", s.trash)
 		ui.HandleFunc("GET /ui/categories", s.categories)
 		ui.HandleFunc("GET /ui/income", s.income)
 		ui.HandleFunc("GET /ui/trends", s.trends)
@@ -621,8 +624,14 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	trashed, err := s.st.TrashLedger(ctx, s.loc)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	bank := slices.Concat(rows, trashed) // rows may be the shared cache: never append to it
 	for _, si := range stmts {
-		rec := analytics.Reconcile(rows, si)
+		rec := analytics.Reconcile(bank, si)
 		data.Recs = append(data.Recs, rec)
 		if rec.OK {
 			data.RecOK++

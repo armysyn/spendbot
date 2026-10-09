@@ -289,6 +289,9 @@ type operationsData struct {
 	Back         string // this page, to come back after an edit
 	CSV          string
 	Cash         *cashBox // filtered to cash: what passed through, skipping by hand
+	Select       bool     // checkboxes to delete several operations
+	Undo         string   // trash ids of the operations just deleted
+	Trashed      int      // operations in the trash
 }
 
 const opsPage = 200
@@ -401,7 +404,7 @@ func newPicker(path string, q url.Values, cur analytics.Period, custom bool, row
 
 func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	d := &operationsData{Flash: r.URL.Query().Get("msg")}
+	d := &operationsData{Flash: r.URL.Query().Get("msg"), Select: r.URL.Query().Get("select") == "1", Undo: r.URL.Query().Get("undo")}
 	rows, err := s.rows(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -431,7 +434,7 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 	d.Min, d.Max, d.Dir, d.Repeat, d.Sort, d.Group = q.Get("min"), q.Get("max"), f.Dir, f.Repeat, q.Get("sort"), q.Get("group")
 	d.Groupings, d.Ask, d.AI, d.AIWhy = analytics.Groupings, q.Get("ask"), s.aiReady(), s.aiWhy(ctx)
 	sq := cloneValues(q)
-	for _, k := range []string{"msg", "limit", "ask"} {
+	for _, k := range []string{"msg", "limit", "ask", "undo"} {
 		sq.Del(k)
 	}
 	d.State = sq.Encode()
@@ -478,7 +481,11 @@ func (s *Server) operations(w http.ResponseWriter, r *http.Request) {
 			g.Total += o.Amount
 		}
 	}
-	d.Back = r.URL.RequestURI()
+	d.Back = withoutParam(withoutParam(r.URL.RequestURI(), "msg"), "undo")
+	if d.Trashed, err = s.st.TrashCount(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
 	if d.Merchant == analytics.CashKey || d.Category == analytics.CashCategory {
 		if d.Cash, err = s.cashBox(r, rows, d.Current); err != nil {
 			s.fail(w, err)
@@ -540,13 +547,15 @@ func safeBack(back, fallback string) string {
 	return fallback
 }
 
-func withMsg(back, msg string) string {
+func withMsg(back, msg string) string { return withParam(withoutParam(back, "undo"), "msg", msg) }
+
+func withoutParam(back, key string) string {
 	u, err := url.Parse(back)
 	if err != nil {
 		return back
 	}
 	q := u.Query()
-	q.Set("msg", msg)
+	q.Del(key)
 	u.RawQuery = q.Encode()
 	return u.String()
 }
@@ -1160,4 +1169,15 @@ func swapAt(path, state string, kv ...string) string {
 		return path
 	}
 	return path + "?" + q.Encode()
+}
+
+func withParam(back, key, value string) string {
+	u, err := url.Parse(back)
+	if err != nil {
+		return back
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
 }

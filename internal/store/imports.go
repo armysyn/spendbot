@@ -35,25 +35,35 @@ func (s *Store) FindUnlinkedTx(ctx context.Context, amountMinor int64, currency 
 	return id, err == nil, err
 }
 
-// ImportTwins lists already imported transactions with the same day, amount, details and
-// kind, in import order. They identify an operation on re-import even when its key changed
-// (a newer version of the statement got more operations on the same day).
-func (s *Store) ImportTwins(ctx context.Context, from, to time.Time, amountMinor int64, details, kind string) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM transactions
+// Twin is an imported operation found by content: a live one (ID) or a deleted one (TrashID).
+type Twin struct {
+	ID, TrashID int64
+}
+
+// ImportTwins lists already imported operations with the same day, amount, details and kind,
+// deleted ones included, in import order. They identify an operation on re-import even when its
+// key changed (a newer version of the statement got more operations on the same day).
+func (s *Store) ImportTwins(ctx context.Context, from, to time.Time, amountMinor int64, details, kind string) ([]Twin, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, 0, id FROM transactions
 		WHERE source = 'import' AND occurred_at >= ? AND occurred_at < ? AND amount_minor = ?
 		  AND COALESCE(merchant_raw, '') = ? AND COALESCE(kind, '') = ?
-		ORDER BY id`, fmtTime(from), fmtTime(to), amountMinor, details, kind)
+		UNION ALL
+		SELECT 0, id, tx_id FROM trash
+		WHERE source = 'import' AND occurred_at >= ? AND occurred_at < ? AND amount_minor = ?
+		  AND COALESCE(merchant_raw, '') = ? AND COALESCE(kind, '') = ?
+		ORDER BY 3`, fmtTime(from), fmtTime(to), amountMinor, details, kind, fmtTime(from), fmtTime(to), amountMinor, details, kind)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []int64
+	var out []Twin
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var t Twin
+		var order int64
+		if err := rows.Scan(&t.ID, &t.TrashID, &order); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		out = append(out, t)
 	}
-	return ids, rows.Err()
+	return out, rows.Err()
 }

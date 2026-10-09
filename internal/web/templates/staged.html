@@ -15,7 +15,7 @@
     <div class="op-main"><span class="op-title">{{.Name}}</span>
       <div class="op-meta">{{if .Err}}<span class="bad">{{.Err}}</span>{{else}}<span>{{date .From}} – {{date .To}}</span>
         <span>· {{.Result.Total}} operations</span><span>· new: {{add .Result.Auto .Result.Review}} purchases, {{.Result.Info}} other</span>
-        <span>· already there: {{add .Result.Duplicates .Result.Matched}}</span>{{if .Result.Verify}}<span class="tag none">totals differ</span>{{end}}{{end}}</div></div>
+        <span>· already there: {{add .Result.Duplicates .Result.Matched}}</span>{{with .Result.Deleted}}<span>· {{.}} deleted earlier, left out</span>{{end}}{{if .Result.Verify}}<span class="tag none">totals differ</span>{{end}}{{end}}</div></div>
     <span class="muted small">{{if not .Err}}{{if .Result.Review}}{{.Result.Review}} need a category{{end}}{{end}}</span>
   </div>
   {{end}}
